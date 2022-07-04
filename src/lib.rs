@@ -1,6 +1,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{dispatch::DispatchResult, traits::Get, BoundedVec};
+use scale_info::TypeInfo;
+use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
 
 /// Edit this file to define custom logic or remove it if it is not needed.
@@ -16,6 +19,13 @@ mod tests;
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
+
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub struct Manifest<AccountId, ManifestMetadataOf> {
+    from: AccountId,
+    to: AccountId,
+    manifest: ManifestMetadataOf,
+}
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -34,6 +44,8 @@ pub mod pallet {
     }
 
     pub type ManifestMetadataOf<T> = BoundedVec<u8, <T as Config>::MaxManifestMetadata>;
+    pub type ManifestOf<T> =
+        Manifest<<T as frame_system::Config>::AccountId, ManifestMetadataOf<T>>;
 
     #[pallet::pallet]
     #[pallet::generate_store(pub(super) trait Store)]
@@ -49,14 +61,13 @@ pub mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn manifests)]
-    pub(super) type Manifests<T: Config> = StorageNMap<
+    pub(super) type Manifests<T: Config> = StorageDoubleMap<
         _,
-        (
-            NMapKey<Blake2_128Concat, T::AccountId>, // To
-            NMapKey<Blake2_128Concat, T::AccountId>, // From
-        ),
-        ManifestMetadataOf<T>,
-        ValueQuery,
+        Blake2_128Concat,
+        T::AccountId,
+        Blake2_128Concat,
+        T::AccountId,
+        ManifestOf<T>,
     >;
 
     // Pallets use events to inform users when important changes are made.
@@ -105,7 +116,15 @@ impl<T: Config> Pallet<T> {
         to: &T::AccountId,
         manifest: ManifestMetadataOf<T>,
     ) -> DispatchResult {
-        Manifests::<T>::insert((to, from), &manifest);
+        Manifests::<T>::insert(
+            to,
+            from,
+            &Manifest {
+                from: from.clone(),
+                to: to.clone(),
+                manifest: manifest.clone(),
+            },
+        );
 
         Self::deposit_event(Event::ManifestUpdated {
             from: from.clone(),
