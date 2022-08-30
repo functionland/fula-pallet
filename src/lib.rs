@@ -61,12 +61,13 @@ pub mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn manifests)]
-    pub(super) type Manifests<T: Config> = StorageDoubleMap<
+    pub(super) type Manifests<T: Config> = StorageNMap<
         _,
-        Blake2_128Concat,
-        T::AccountId,
-        Blake2_128Concat,
-        T::AccountId,
+        (
+            NMapKey<Blake2_128Concat, T::AccountId>,
+            NMapKey<Blake2_128Concat, T::AccountId>,
+            NMapKey<Blake2_128Concat, ManifestOf<T>>,
+        ),
         ManifestOf<T>,
     >;
 
@@ -117,13 +118,18 @@ impl<T: Config> Pallet<T> {
         manifest: ManifestMetadataOf<T>,
     ) -> DispatchResult {
         Manifests::<T>::insert(
-            to,
+            (to,
             from,
             &Manifest {
                 from: from.clone(),
                 to: to.clone(),
                 manifest: manifest.clone(),
-            },
+            }),
+            &Manifest {
+                from: from.clone(),
+                to: to.clone(),
+                manifest: manifest.clone(),
+            }
         );
 
         Self::deposit_event(Event::ManifestUpdated {
