@@ -22,9 +22,9 @@ mod benchmarking;
 
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct Manifest<AccountId, ManifestMetadataOf> {
-    from: AccountId,
-    to: AccountId,
-    manifest: ManifestMetadataOf,
+    pub from: AccountId,
+    pub to: AccountId,
+    pub manifest: ManifestMetadataOf,
 }
 
 #[frame_support::pallet]
