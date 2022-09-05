@@ -68,8 +68,7 @@ pub mod pallet {
             NMapKey<Blake2_128Concat, T::AccountId>,
             NMapKey<Blake2_128Concat, ManifestOf<T>>,
         ),
-        u64,
-        ValueQuery
+        ManifestOf<T>
     >;
 
     // Pallets use events to inform users when important changes are made.
@@ -126,7 +125,11 @@ impl<T: Config> Pallet<T> {
                 to: to.clone(),
                 manifest: manifest.clone(),
             }),
-            0
+            &Manifest {
+                from: from.clone(),
+                to: to.clone(),
+                manifest: manifest.clone(),
+            }
         );
 
         Self::deposit_event(Event::ManifestUpdated {
