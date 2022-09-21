@@ -81,6 +81,11 @@ pub mod pallet {
             to: T::AccountId,
             manifest: Vec<u8>,
         },
+        ManifestBurned{
+            from: T::AccountId,
+            to: T::AccountId,
+            manifest: Vec<u8>,
+        },
     }
 
     // Errors inform users that something went wrong.
@@ -106,6 +111,17 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             Self::do_update_manifest(&who, &to, manifest)?;
+            Ok(().into())
+        }
+
+        #[pallet::weight(10_000)]
+        pub fn burn(
+            origin: OriginFor<T>,
+            to: T::AccountId,
+            manifest: ManifestMetadataOf<T>,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+            Self::do_burn(&who, &to, manifest)?;
             Ok(().into())
         }
     }
@@ -140,4 +156,45 @@ impl<T: Config> Pallet<T> {
 
         Ok(())
     }
+
+    pub fn do_burn(
+        from: &T::AccountId,
+        to: &T::AccountId,
+        manifest: ManifestMetadataOf<T>,
+    ) -> DispatchResult {
+        Self::remove_manifest_from(from, to, manifest.clone())?;
+
+        Self::deposit_event(Event::ManifestBurned {
+            from: from.clone(),
+            to: to.clone(),
+            manifest: manifest.to_vec(),
+        });
+
+        Ok(())
+    }    
+
+    fn remove_manifest_from(
+        from: &T::AccountId,
+        to: &T::AccountId,
+        manifest: ManifestMetadataOf<T>,
+    ) -> DispatchResult {
+
+        let current_manifest = &Manifest {
+            from: from.clone(),
+            to: to.clone(),
+            manifest: manifest.clone(),
+        };
+
+        // Manifests::<T>::try_mutate((from, to, current_manifest), |manifest_stored| -> DispatchResult {
+        //     if let Some(manifest_stored) = manifest_stored {
+        //         manifest_stored.from = to.clone();
+        //     }
+        //     Ok(())
+        // })?;
+
+        Manifests::<T>::remove((from, to, current_manifest));
+
+        Ok(())
+    }
+
 }
