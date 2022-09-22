@@ -185,14 +185,14 @@ impl<T: Config> Pallet<T> {
             manifest: manifest.clone(),
         };
 
-        // Manifests::<T>::try_mutate((from, to, current_manifest), |manifest_stored| -> DispatchResult {
-        //     if let Some(manifest_stored) = manifest_stored {
-        //         manifest_stored.from = to.clone();
-        //     }
-        //     Ok(())
-        // })?;
+        Manifests::<T>::try_mutate((from, to, current_manifest), |manifest_stored| -> DispatchResult {
+            if let Some(manifest_stored) = manifest_stored {
+                manifest_stored.from = to.clone();
+            }
+            Ok(())
+        })?;
 
-        Manifests::<T>::remove((from, to, current_manifest));
+        // Manifests::<T>::remove((from, to, current_manifest));
 
         Ok(())
     }
