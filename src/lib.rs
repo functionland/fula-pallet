@@ -115,7 +115,7 @@ pub mod pallet {
         }
 
         #[pallet::weight(10_000)]
-        pub fn burn(
+        pub fn burn_manifest(
             origin: OriginFor<T>,
             to: T::AccountId,
             manifest: ManifestMetadataOf<T>,
