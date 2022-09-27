@@ -162,7 +162,15 @@ impl<T: Config> Pallet<T> {
         to: &T::AccountId,
         manifest: ManifestMetadataOf<T>,
     ) -> DispatchResult {
-        Self::remove_manifest_from(from, to, manifest.clone())?;
+        //Self::remove_manifest_from(from, to, manifest.clone())?;
+
+        let current_manifest = &Manifest {
+            from: from.clone(),
+            to: to.clone(),
+            manifest: manifest.clone(),
+        };
+
+        Manifests::<T>::remove((from, to, current_manifest));
 
         Self::deposit_event(Event::ManifestBurned {
             from: from.clone(),
@@ -173,28 +181,28 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }    
 
-    fn remove_manifest_from(
-        from: &T::AccountId,
-        to: &T::AccountId,
-        manifest: ManifestMetadataOf<T>,
-    ) -> DispatchResult {
+    // fn remove_manifest_from(
+    //     from: &T::AccountId,
+    //     to: &T::AccountId,
+    //     manifest: ManifestMetadataOf<T>,
+    // ) -> DispatchResult {
 
-        let current_manifest = &Manifest {
-            from: from.clone(),
-            to: to.clone(),
-            manifest: manifest.clone(),
-        };
+    //     let current_manifest = &Manifest {
+    //         from: from.clone(),
+    //         to: to.clone(),
+    //         manifest: manifest.clone(),
+    //     };
 
-        Manifests::<T>::try_mutate((from, to, current_manifest), |manifest_stored| -> DispatchResult {
-            if let Some(manifest_stored) = manifest_stored {
-                manifest_stored.from = to.clone();
-            }
-            Ok(())
-        })?;
+    //     // Manifests::<T>::try_mutate((from, to, current_manifest), |manifest_stored| -> DispatchResult {
+    //     //     if let Some(manifest_stored) = manifest_stored {
+    //     //         manifest_stored.from = to.clone();
+    //     //     }
+    //     //     Ok(())
+    //     // })?;
 
-        // Manifests::<T>::remove((from, to, current_manifest));
+    //     Manifests::<T>::remove((from, to, current_manifest));
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
 }
