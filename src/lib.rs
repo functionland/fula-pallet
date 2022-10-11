@@ -27,6 +27,9 @@ pub struct Manifest<AccountId, ManifestMetadataOf> {
     pub manifest: ManifestMetadataOf,
 }
 
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub struct CID<Value>(Value);
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
@@ -41,9 +44,14 @@ pub mod pallet {
 
         #[pallet::constant]
         type MaxManifestMetadata: Get<u32>;
+        type MaxManifestCID: Get<u32>;
     }
 
     pub type ManifestMetadataOf<T> = BoundedVec<u8, <T as Config>::MaxManifestMetadata>;
+    pub type ManifestCIDOf<T> = BoundedVec<u8, <T as Config>::MaxManifestCID>;
+
+    pub type CIDOf<T> = 
+        CID<ManifestCIDOf<T>>;
     pub type ManifestOf<T> =
         Manifest<<T as frame_system::Config>::AccountId, ManifestMetadataOf<T>>;
 
@@ -66,7 +74,7 @@ pub mod pallet {
         (
             NMapKey<Blake2_128Concat, T::AccountId>,
             NMapKey<Blake2_128Concat, T::AccountId>,
-            NMapKey<Blake2_128Concat, ManifestOf<T>>,
+            NMapKey<Blake2_128Concat, CIDOf<T>>,
         ),
         ManifestOf<T>
     >;
@@ -81,10 +89,10 @@ pub mod pallet {
             to: T::AccountId,
             manifest: Vec<u8>,
         },
-        ManifestBurned{
+        ManifestRemoved{
             from: T::AccountId,
             to: T::AccountId,
-            manifest: Vec<u8>,
+            cid: Vec<u8>,
         },
     }
 
@@ -108,20 +116,21 @@ pub mod pallet {
             origin: OriginFor<T>,
             to: T::AccountId,
             manifest: ManifestMetadataOf<T>,
+            cid: ManifestCIDOf<T>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            Self::do_update_manifest(&who, &to, manifest)?;
+            Self::do_update_manifest(&who, &to, manifest, cid)?;
             Ok(().into())
         }
 
         #[pallet::weight(10_000)]
-        pub fn burn(
+        pub fn remove_manifest(
             origin: OriginFor<T>,
             to: T::AccountId,
-            manifest: ManifestMetadataOf<T>,
+            cid: ManifestCIDOf<T>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            Self::do_burn(&who, &to, manifest)?;
+            Self::do_remove_manifest(&who, &to, cid)?;
             Ok(().into())
         }
     }
@@ -132,15 +141,12 @@ impl<T: Config> Pallet<T> {
         from: &T::AccountId,
         to: &T::AccountId,
         manifest: ManifestMetadataOf<T>,
+        cid: ManifestCIDOf<T>,
     ) -> DispatchResult {
         Manifests::<T>::insert(
             (to,
             from,
-            &Manifest {
-                from: from.clone(),
-                to: to.clone(),
-                manifest: manifest.clone(),
-            }),
+            CID(cid)),
             &Manifest {
                 from: from.clone(),
                 to: to.clone(),
@@ -157,52 +163,21 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    pub fn do_burn(
+    pub fn do_remove_manifest(
         from: &T::AccountId,
         to: &T::AccountId,
-        manifest: ManifestMetadataOf<T>,
+        cid: ManifestCIDOf<T>,
     ) -> DispatchResult {
-        //Self::remove_manifest_from(from, to, manifest.clone())?;
 
-        let current_manifest = &Manifest {
+        Manifests::<T>::remove((from, to, CID(cid.clone())));
+
+        Self::deposit_event(Event::ManifestRemoved {
             from: from.clone(),
             to: to.clone(),
-            manifest: manifest.clone(),
-        };
-
-        Manifests::<T>::remove((from, to, current_manifest));
-
-        Self::deposit_event(Event::ManifestBurned {
-            from: from.clone(),
-            to: to.clone(),
-            manifest: manifest.to_vec(),
+            cid: cid.to_vec(),
         });
 
         Ok(())
     }    
-
-    // fn remove_manifest_from(
-    //     from: &T::AccountId,
-    //     to: &T::AccountId,
-    //     manifest: ManifestMetadataOf<T>,
-    // ) -> DispatchResult {
-
-    //     let current_manifest = &Manifest {
-    //         from: from.clone(),
-    //         to: to.clone(),
-    //         manifest: manifest.clone(),
-    //     };
-
-    //     // Manifests::<T>::try_mutate((from, to, current_manifest), |manifest_stored| -> DispatchResult {
-    //     //     if let Some(manifest_stored) = manifest_stored {
-    //     //         manifest_stored.from = to.clone();
-    //     //     }
-    //     //     Ok(())
-    //     // })?;
-
-    //     Manifests::<T>::remove((from, to, current_manifest));
-
-    //     Ok(())
-    // }
 
 }
