@@ -2,7 +2,6 @@
 
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{dispatch::DispatchResult, traits::Get, BoundedVec};
-use frame_system::Account;
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
@@ -20,6 +19,12 @@ mod tests;
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
+
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub struct Value<AccountId, ManifestMetadataOf> {
+    pub storage: Option<AccountId>,
+    pub manifest: Manifest<AccountId,ManifestMetadataOf>
+}
 
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct Manifest<AccountId, ManifestMetadataOf> {
@@ -56,6 +61,9 @@ pub mod pallet {
     pub type ManifestOf<T> =
         Manifest<<T as frame_system::Config>::AccountId, ManifestMetadataOf<T>>;
 
+    pub type ValueOf<T> =
+        Value<<T as frame_system::Config>::AccountId, ManifestMetadataOf<T>>;
+
     #[pallet::pallet]
     #[pallet::generate_store(pub(super) trait Store)]
     pub struct Pallet<T>(_);
@@ -74,10 +82,7 @@ pub mod pallet {
         _,
         Blake2_128Concat, T::AccountId,
         Blake2_128Concat, CIDOf<T>,
-        (
-            Option<T::AccountId>,
-            ManifestOf<T>
-        )
+        ValueOf<T>
     >;
 
     // Pallets use events to inform users when important changes are made.
@@ -156,12 +161,14 @@ impl<T: Config> Pallet<T> {
         Manifests::<T>::insert(
         from,
         CID(cid),
-        (Some(to),
-        &Manifest {
-            from: from.clone(),
-            to: Some(to.clone()),
-            manifest: manifest.clone(),
-        })        
+        Value{
+            storage:Some(to.clone()),
+            manifest: Manifest {
+                from: from.clone(),
+                to: Some(to.clone()),
+                manifest: manifest.clone(),
+            }
+        }       
         );
 
         Self::deposit_event(Event::ManifestUpdated {
@@ -181,12 +188,14 @@ impl<T: Config> Pallet<T> {
         Manifests::<T>::insert(
             from,
             CID(cid),
-            (None::<T::AccountId>,
-            &Manifest {
-                from: from.clone(),
-                to: None,
-                manifest: manifest.clone(),
-            })        
+            Value{
+                storage: None::<T::AccountId>,
+                manifest: Manifest {
+                    from: from.clone(),
+                    to: None,
+                    manifest: manifest.clone(),
+                }
+            }        
             );
 
         Self::deposit_event(Event::ManifestUpdated {
