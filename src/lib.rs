@@ -2,6 +2,7 @@
 
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{dispatch::DispatchResult, traits::Get, BoundedVec};
+use frame_system::Account;
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
@@ -23,7 +24,7 @@ mod benchmarking;
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct Manifest<AccountId, ManifestMetadataOf> {
     pub from: AccountId,
-    pub to: AccountId,
+    pub to: Option<AccountId>,
     pub manifest: ManifestMetadataOf,
 }
 
@@ -69,14 +70,14 @@ pub mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn manifests)]
-    pub(super) type Manifests<T: Config> = StorageNMap<
+    pub(super) type Manifests<T: Config> = StorageDoubleMap<
         _,
+        Blake2_128Concat, T::AccountId,
+        Blake2_128Concat, CIDOf<T>,
         (
-            NMapKey<Blake2_128Concat, T::AccountId>,
-            NMapKey<Blake2_128Concat, T::AccountId>,
-            NMapKey<Blake2_128Concat, CIDOf<T>>,
-        ),
-        ManifestOf<T>
+            Option<T::AccountId>,
+            ManifestOf<T>
+        )
     >;
 
     // Pallets use events to inform users when important changes are made.
@@ -86,12 +87,11 @@ pub mod pallet {
     pub enum Event<T: Config> {
         ManifestUpdated {
             from: T::AccountId,
-            to: T::AccountId,
+            to: Option<T::AccountId>,
             manifest: Vec<u8>,
         },
         ManifestRemoved{
             from: T::AccountId,
-            to: T::AccountId,
             cid: Vec<u8>,
         },
     }
@@ -110,6 +110,17 @@ pub mod pallet {
     // Dispatchable functions must be annotated with a weight and must return a DispatchResult.
     #[pallet::call]
     impl<T: Config> Pallet<T> {
+        #[pallet::weight(10_000)]
+        pub fn upload_manifest(
+            origin: OriginFor<T>,
+            manifest: ManifestMetadataOf<T>,
+            cid: ManifestCIDOf<T>,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+            Self::do_upload_manifest(&who, manifest, cid)?;
+            Ok(().into())
+        }
+
         /// Updates fula manifest from to
         #[pallet::weight(10_000)]
         pub fn update_manifest(
@@ -126,11 +137,10 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn remove_manifest(
             origin: OriginFor<T>,
-            to: T::AccountId,
             cid: ManifestCIDOf<T>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            Self::do_remove_manifest(&who, &to, cid)?;
+            Self::do_remove_manifest(&who, cid)?;
             Ok(().into())
         }
     }
@@ -144,19 +154,44 @@ impl<T: Config> Pallet<T> {
         cid: ManifestCIDOf<T>,
     ) -> DispatchResult {
         Manifests::<T>::insert(
-            (to,
-            from,
-            CID(cid)),
-            &Manifest {
-                from: from.clone(),
-                to: to.clone(),
-                manifest: manifest.clone(),
-            }
+        from,
+        CID(cid),
+        (Some(to),
+        &Manifest {
+            from: from.clone(),
+            to: Some(to.clone()),
+            manifest: manifest.clone(),
+        })        
         );
 
         Self::deposit_event(Event::ManifestUpdated {
             from: from.clone(),
-            to: to.clone(),
+            to: Some(to.clone()),
+            manifest: manifest.to_vec(),
+        });
+
+        Ok(())
+    }
+
+    pub fn do_upload_manifest(
+        from: &T::AccountId,
+        manifest: ManifestMetadataOf<T>,
+        cid: ManifestCIDOf<T>,
+    ) -> DispatchResult {
+        Manifests::<T>::insert(
+            from,
+            CID(cid),
+            (None::<T::AccountId>,
+            &Manifest {
+                from: from.clone(),
+                to: None,
+                manifest: manifest.clone(),
+            })        
+            );
+
+        Self::deposit_event(Event::ManifestUpdated {
+            from: from.clone(),
+            to: None,
             manifest: manifest.to_vec(),
         });
 
@@ -165,15 +200,13 @@ impl<T: Config> Pallet<T> {
 
     pub fn do_remove_manifest(
         from: &T::AccountId,
-        to: &T::AccountId,
         cid: ManifestCIDOf<T>,
     ) -> DispatchResult {
 
-        Manifests::<T>::remove((from, to, CID(cid.clone())));
+        Manifests::<T>::remove(from, CID(cid.clone()));
 
         Self::deposit_event(Event::ManifestRemoved {
             from: from.clone(),
-            to: to.clone(),
             cid: cid.to_vec(),
         });
 

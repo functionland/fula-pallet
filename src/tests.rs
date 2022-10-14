@@ -40,7 +40,7 @@ fn update_manifest() {
 
         if let Event::Fula(crate::Event::ManifestUpdated { from, to, manifest }) = last_event() {
             assert_eq!(from, 1);
-            assert_eq!(to, 2);
+            assert_eq!(to.unwrap(), 2);
             assert_eq!(manifest.to_vec(), hash.to_vec());
         } else {
             panic!();
