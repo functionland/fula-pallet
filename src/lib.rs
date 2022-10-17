@@ -1,9 +1,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use codec::{Decode, Encode, MaxEncodedLen};
-use frame_support::{dispatch::DispatchResult, traits::Get, BoundedVec};
+use frame_support::{ensure, dispatch::DispatchResult, traits::Get, BoundedVec};
 use scale_info::TypeInfo;
-use sp_runtime::RuntimeDebug;
+use sp_runtime::{RuntimeDebug, offchain::storage};
 use sp_std::prelude::*;
 
 /// Edit this file to define custom logic or remove it if it is not needed.
@@ -29,7 +29,6 @@ pub struct Value<AccountId, ManifestMetadataOf> {
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct Manifest<AccountId, ManifestMetadataOf> {
     pub from: AccountId,
-    pub to: Option<AccountId>,
     pub manifest: ManifestMetadataOf,
 }
 
@@ -108,6 +107,7 @@ pub mod pallet {
         NoneValue,
         /// Errors should have helpful documentation associated with them.
         StorageOverflow,
+        InUse,
     }
 
     // Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -140,6 +140,18 @@ pub mod pallet {
         }
 
         #[pallet::weight(10_000)]
+        pub fn storage_manifest(
+            origin: OriginFor<T>,
+            to: T::AccountId,
+            manifest: ManifestMetadataOf<T>,
+            cid: ManifestCIDOf<T>,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+            Self::do_storage_manifest(&who, manifest, &to, cid)?;
+            Ok(().into())
+        }
+
+        #[pallet::weight(10_000)]
         pub fn remove_manifest(
             origin: OriginFor<T>,
             cid: ManifestCIDOf<T>,
@@ -158,18 +170,53 @@ impl<T: Config> Pallet<T> {
         manifest: ManifestMetadataOf<T>,
         cid: ManifestCIDOf<T>,
     ) -> DispatchResult {
+        ensure!(
+            Manifests::<T>::contains_key(from, CID(cid.clone())),
+            Error::<T>::InUse
+        );
         Manifests::<T>::insert(
-        from,
-        CID(cid),
-        Value{
-            storage:Some(to.clone()),
-            manifest: Manifest {
+            from,
+            CID(cid),
+            Value{
+                storage:Some(to.clone()),
+                manifest: Manifest {
+                    from: from.clone(),
+                    manifest: manifest.clone(),
+                }
+            }       
+            );
+
+            Self::deposit_event(Event::ManifestUpdated {
                 from: from.clone(),
                 to: Some(to.clone()),
-                manifest: manifest.clone(),
+                manifest: manifest.to_vec(),
+            });
+    
+            Ok(())  
+    }
+
+    pub fn do_storage_manifest(
+        from: &T::AccountId,
+        manifest: ManifestMetadataOf<T>,
+        to: &T::AccountId,
+        cid: ManifestCIDOf<T>,
+    ) -> DispatchResult {
+        Manifests::<T>::try_mutate(
+        from,
+        CID(cid),
+        |value| -> DispatchResult {
+            if let Some(manifest_info) = value {
+                if manifest_info.storage == None {
+                    manifest_info.storage = Some(to.clone());
+                    Ok(())
+                } else {
+                    Err(sp_runtime::DispatchError::Other("Already Stored"))
+                }
+            } else {
+                Err(sp_runtime::DispatchError::Other("Already Stored"))
             }
         }       
-        );
+        )?;
 
         Self::deposit_event(Event::ManifestUpdated {
             from: from.clone(),
@@ -192,7 +239,6 @@ impl<T: Config> Pallet<T> {
                 storage: None::<T::AccountId>,
                 manifest: Manifest {
                     from: from.clone(),
-                    to: None,
                     manifest: manifest.clone(),
                 }
             }        
