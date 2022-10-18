@@ -3,7 +3,7 @@
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{ensure, dispatch::DispatchResult, traits::Get, BoundedVec};
 use scale_info::TypeInfo;
-use sp_runtime::{RuntimeDebug, offchain::storage};
+use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
 
 /// Edit this file to define custom logic or remove it if it is not needed.
@@ -21,19 +21,19 @@ mod tests;
 mod benchmarking;
 
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub struct Value<AccountId, ManifestMetadataOf> {
-    pub storage: Option<AccountId>,
-    pub manifest: Manifest<AccountId,ManifestMetadataOf>
-}
-
-#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct Manifest<AccountId, ManifestMetadataOf> {
-    pub from: AccountId,
-    pub manifest: ManifestMetadataOf,
+    pub storage: Option<AccountId>,
+    pub manifest_data: ManifestData<AccountId,ManifestMetadataOf>
 }
 
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub struct CID<Value>(Value);
+pub struct ManifestData<AccountId, ManifestMetadataOf> {
+    pub uploader: AccountId,
+    pub manifest_metadata: ManifestMetadataOf,
+}
+
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub struct CID<Cid>(Cid);
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -49,19 +49,13 @@ pub mod pallet {
 
         #[pallet::constant]
         type MaxManifestMetadata: Get<u32>;
-        type MaxManifestCID: Get<u32>;
+        type MaxCID: Get<u32>;
     }
 
     pub type ManifestMetadataOf<T> = BoundedVec<u8, <T as Config>::MaxManifestMetadata>;
-    pub type ManifestCIDOf<T> = BoundedVec<u8, <T as Config>::MaxManifestCID>;
-
-    pub type CIDOf<T> = 
-        CID<ManifestCIDOf<T>>;
-    pub type ManifestOf<T> =
-        Manifest<<T as frame_system::Config>::AccountId, ManifestMetadataOf<T>>;
-
-    pub type ValueOf<T> =
-        Value<<T as frame_system::Config>::AccountId, ManifestMetadataOf<T>>;
+    pub type ManifestCIDOf<T> = BoundedVec<u8, <T as Config>::MaxCID>;
+    pub type CIDOf<T> = CID<ManifestCIDOf<T>>;
+    pub type ManifestOf<T> = Manifest<<T as frame_system::Config>::AccountId, ManifestMetadataOf<T>>;
 
     #[pallet::pallet]
     #[pallet::generate_store(pub(super) trait Store)]
@@ -81,7 +75,7 @@ pub mod pallet {
         _,
         Blake2_128Concat, T::AccountId,
         Blake2_128Concat, CIDOf<T>,
-        ValueOf<T>
+        ManifestOf<T>
     >;
 
     // Pallets use events to inform users when important changes are made.
@@ -89,13 +83,13 @@ pub mod pallet {
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
-        ManifestUpdated {
-            from: T::AccountId,
-            to: Option<T::AccountId>,
+        ManifestOutput {
+            uploader: T::AccountId,
+            storage: Option<T::AccountId>,
             manifest: Vec<u8>,
         },
-        ManifestRemoved{
-            from: T::AccountId,
+        ManifestRemoved {
+            uploader: T::AccountId,
             cid: Vec<u8>,
         },
     }
@@ -103,9 +97,7 @@ pub mod pallet {
     // Errors inform users that something went wrong.
     #[pallet::error]
     pub enum Error<T> {
-        /// Error names should be descriptive.
         NoneValue,
-        /// Errors should have helpful documentation associated with them.
         StorageOverflow,
         InUse,
     }
@@ -126,28 +118,28 @@ pub mod pallet {
             Ok(().into())
         }
 
-        /// Updates fula manifest from to
+        /// Updates fula manifest uploader to
         #[pallet::weight(10_000)]
         pub fn update_manifest(
             origin: OriginFor<T>,
-            to: T::AccountId,
+            storage: T::AccountId,
             manifest: ManifestMetadataOf<T>,
             cid: ManifestCIDOf<T>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            Self::do_update_manifest(&who, &to, manifest, cid)?;
+            Self::do_update_manifest(&who, &storage, manifest, cid)?;
             Ok(().into())
         }
 
         #[pallet::weight(10_000)]
         pub fn storage_manifest(
             origin: OriginFor<T>,
-            to: T::AccountId,
+            storage: T::AccountId,
             manifest: ManifestMetadataOf<T>,
             cid: ManifestCIDOf<T>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            Self::do_storage_manifest(&who, manifest, &to, cid)?;
+            Self::do_storage_manifest(&who, manifest, &storage, cid)?;
             Ok(().into())
         }
 
@@ -165,49 +157,48 @@ pub mod pallet {
 
 impl<T: Config> Pallet<T> {
     pub fn do_update_manifest(
-        from: &T::AccountId,
-        to: &T::AccountId,
+        uploader: &T::AccountId,
+        storage: &T::AccountId,
         manifest: ManifestMetadataOf<T>,
         cid: ManifestCIDOf<T>,
     ) -> DispatchResult {
         ensure!(
-            Manifests::<T>::contains_key(from, CID(cid.clone())),
+            Manifests::<T>::contains_key(uploader, CID(cid.clone())),
             Error::<T>::InUse
         );
         Manifests::<T>::insert(
-            from,
+            uploader,
             CID(cid),
-            Value{
-                storage:Some(to.clone()),
-                manifest: Manifest {
-                    from: from.clone(),
-                    manifest: manifest.clone(),
+            Manifest{
+                storage:Some(storage.clone()),
+                manifest_data: ManifestData {
+                    uploader: uploader.clone(),
+                    manifest_metadata: manifest.clone(),
                 }
             }       
             );
 
-            Self::deposit_event(Event::ManifestUpdated {
-                from: from.clone(),
-                to: Some(to.clone()),
+            Self::deposit_event(Event::ManifestOutput {
+                uploader: uploader.clone(),
+                storage: Some(storage.clone()),
                 manifest: manifest.to_vec(),
-            });
-    
+            });    
             Ok(())  
     }
 
     pub fn do_storage_manifest(
-        from: &T::AccountId,
+        uploader: &T::AccountId,
         manifest: ManifestMetadataOf<T>,
-        to: &T::AccountId,
+        storage: &T::AccountId,
         cid: ManifestCIDOf<T>,
     ) -> DispatchResult {
         Manifests::<T>::try_mutate(
-        from,
+        uploader,
         CID(cid),
         |value| -> DispatchResult {
             if let Some(manifest_info) = value {
                 if manifest_info.storage == None {
-                    manifest_info.storage = Some(to.clone());
+                    manifest_info.storage = Some(storage.clone());
                     Ok(())
                 } else {
                     Err(sp_runtime::DispatchError::Other("Already Stored"))
@@ -218,54 +209,49 @@ impl<T: Config> Pallet<T> {
         }       
         )?;
 
-        Self::deposit_event(Event::ManifestUpdated {
-            from: from.clone(),
-            to: Some(to.clone()),
+        Self::deposit_event(Event::ManifestOutput {
+            uploader: uploader.clone(),
+            storage: Some(storage.clone()),
             manifest: manifest.to_vec(),
         });
-
         Ok(())
     }
 
     pub fn do_upload_manifest(
-        from: &T::AccountId,
+        uploader: &T::AccountId,
         manifest: ManifestMetadataOf<T>,
         cid: ManifestCIDOf<T>,
     ) -> DispatchResult {
         Manifests::<T>::insert(
-            from,
+            uploader,
             CID(cid),
-            Value{
+            Manifest{
                 storage: None::<T::AccountId>,
-                manifest: Manifest {
-                    from: from.clone(),
-                    manifest: manifest.clone(),
+                manifest_data: ManifestData {
+                    uploader: uploader.clone(),
+                    manifest_metadata: manifest.clone(),
                 }
             }        
             );
 
-        Self::deposit_event(Event::ManifestUpdated {
-            from: from.clone(),
-            to: None,
+        Self::deposit_event(Event::ManifestOutput {
+            uploader: uploader.clone(),
+            storage: None,
             manifest: manifest.to_vec(),
         });
-
         Ok(())
     }
 
     pub fn do_remove_manifest(
-        from: &T::AccountId,
+        uploader: &T::AccountId,
         cid: ManifestCIDOf<T>,
     ) -> DispatchResult {
-
-        Manifests::<T>::remove(from, CID(cid.clone()));
+        Manifests::<T>::remove(uploader, CID(cid.clone()));
 
         Self::deposit_event(Event::ManifestRemoved {
-            from: from.clone(),
+            uploader: uploader.clone(),
             cid: cid.to_vec(),
         });
-
         Ok(())
-    }    
-
+    }
 }

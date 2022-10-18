@@ -59,13 +59,13 @@ impl system::Config for Test {
 
 parameter_types! {
     pub const MaxManifestMetadata: u32 = 128;
-    pub const MaxManifestCID: u32 = 128;
+    pub const MaxCID: u32 = 128;
 }
 
 impl functionland_fula::Config for Test {
     type Event = Event;
     type MaxManifestMetadata = MaxManifestMetadata;
-    type MaxManifestCID = MaxManifestCID;
+    type MaxCID = MaxCID;
 }
 
 // Build genesis storage according to the mock runtime.

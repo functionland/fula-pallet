@@ -38,9 +38,9 @@ fn update_manifest() {
 
         assert_ok!(Fula::update_manifest(Origin::signed(1), 2, hash.clone(),cid_hash.clone()));
 
-        if let Event::Fula(crate::Event::ManifestUpdated { from, to, manifest }) = last_event() {
-            assert_eq!(from, 1);
-            assert_eq!(to.unwrap(), 2);
+        if let Event::Fula(crate::Event::ManifestOutput { uploader, storage, manifest }) = last_event() {
+            assert_eq!(uploader, 1);
+            assert_eq!(storage.unwrap(), 2);
             assert_eq!(manifest.to_vec(), hash.to_vec());
         } else {
             panic!();
