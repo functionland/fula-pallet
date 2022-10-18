@@ -134,12 +134,11 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn storage_manifest(
             origin: OriginFor<T>,
-            storage: T::AccountId,
-            manifest: ManifestMetadataOf<T>,
+            uploader: T::AccountId,
             cid: ManifestCIDOf<T>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            Self::do_storage_manifest(&who, manifest, &storage, cid)?;
+            Self::do_storage_manifest(&who, &uploader, cid)?;
             Ok(().into())
         }
 
@@ -187,9 +186,8 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn do_storage_manifest(
-        uploader: &T::AccountId,
-        manifest: ManifestMetadataOf<T>,
         storage: &T::AccountId,
+        uploader: &T::AccountId,
         cid: ManifestCIDOf<T>,
     ) -> DispatchResult {
         Manifests::<T>::try_mutate(
