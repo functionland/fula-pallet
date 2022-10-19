@@ -88,6 +88,11 @@ pub mod pallet {
             storage: Option<T::AccountId>,
             manifest: Vec<u8>,
         },
+        StorageManifestOutput {
+            uploader: T::AccountId,
+            storage: Option<T::AccountId>,
+            cid: Vec<u8>,
+        },
         ManifestRemoved {
             uploader: T::AccountId,
             cid: Vec<u8>,
@@ -192,7 +197,7 @@ impl<T: Config> Pallet<T> {
     ) -> DispatchResult {
         Manifests::<T>::try_mutate(
         uploader,
-        CID(cid),
+        CID(cid.clone()),
         |value| -> DispatchResult {
             if let Some(manifest_info) = value {
                 if manifest_info.storage == None {
@@ -207,10 +212,10 @@ impl<T: Config> Pallet<T> {
         }       
         )?;
 
-        Self::deposit_event(Event::ManifestOutput {
+        Self::deposit_event(Event::StorageManifestOutput {
             uploader: uploader.clone(),
             storage: Some(storage.clone()),
-            manifest: manifest.to_vec(),
+            cid: cid.to_vec(),
         });
         Ok(())
     }
