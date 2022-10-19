@@ -166,10 +166,6 @@ impl<T: Config> Pallet<T> {
         manifest: ManifestMetadataOf<T>,
         cid: ManifestCIDOf<T>,
     ) -> DispatchResult {
-        ensure!(
-            Manifests::<T>::contains_key(uploader, CID(cid.clone())),
-            Error::<T>::InUse
-        );
         Manifests::<T>::insert(
             uploader,
             CID(cid),
