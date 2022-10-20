@@ -1,7 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use codec::{Decode, Encode, MaxEncodedLen};
-use frame_support::{ensure, dispatch::DispatchResult, traits::Get, BoundedVec};
+use frame_support::{dispatch::DispatchResult, traits::Get, BoundedVec};
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
@@ -22,8 +22,9 @@ mod benchmarking;
 
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct Manifest<AccountId, ManifestMetadataOf> {
-    pub storage: Option<AccountId>,
-    pub manifest_data: ManifestData<AccountId,ManifestMetadataOf>
+    pub storage: Vec<AccountId>,
+    pub replication_factor: u8,
+    pub manifest_data: ManifestData<AccountId,ManifestMetadataOf>,
 }
 
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
@@ -58,6 +59,7 @@ pub mod pallet {
     pub type ManifestOf<T> = Manifest<<T as frame_system::Config>::AccountId, ManifestMetadataOf<T>>;
 
     #[pallet::pallet]
+    #[pallet::without_storage_info]
     #[pallet::generate_store(pub(super) trait Store)]
     pub struct Pallet<T>(_);
 
@@ -85,10 +87,15 @@ pub mod pallet {
     pub enum Event<T: Config> {
         ManifestOutput {
             uploader: T::AccountId,
-            storage: Option<T::AccountId>,
+            storage: Vec<T::AccountId>,
             manifest: Vec<u8>,
         },
         StorageManifestOutput {
+            uploader: T::AccountId,
+            storage: T::AccountId,
+            cid: Vec<u8>,
+        },
+        RemoveStorerOutput {
             uploader: T::AccountId,
             storage: Option<T::AccountId>,
             cid: Vec<u8>,
@@ -112,17 +119,6 @@ pub mod pallet {
     // Dispatchable functions must be annotated with a weight and must return a DispatchResult.
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        #[pallet::weight(10_000)]
-        pub fn upload_manifest(
-            origin: OriginFor<T>,
-            manifest: ManifestMetadataOf<T>,
-            cid: ManifestCIDOf<T>,
-        ) -> DispatchResultWithPostInfo {
-            let who = ensure_signed(origin)?;
-            Self::do_upload_manifest(&who, manifest, cid)?;
-            Ok(().into())
-        }
-
         /// Updates fula manifest uploader to
         #[pallet::weight(10_000)]
         pub fn update_manifest(
@@ -130,9 +126,22 @@ pub mod pallet {
             storage: T::AccountId,
             manifest: ManifestMetadataOf<T>,
             cid: ManifestCIDOf<T>,
+            replication_factor: u8,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            Self::do_update_manifest(&who, &storage, manifest, cid)?;
+            Self::do_update_manifest(&who, &storage, manifest, cid, replication_factor)?;
+            Ok(().into())
+        }
+
+        #[pallet::weight(10_000)]
+        pub fn upload_manifest(
+            origin: OriginFor<T>,
+            manifest: ManifestMetadataOf<T>,
+            cid: ManifestCIDOf<T>,
+            replication_factor: u8,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+            Self::do_upload_manifest(&who, manifest, cid, replication_factor)?;
             Ok(().into())
         }
 
@@ -144,6 +153,17 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             Self::do_storage_manifest(&who, &uploader, cid)?;
+            Ok(().into())
+        }
+
+        #[pallet::weight(10_000)]
+        pub fn remove_storer(
+            origin: OriginFor<T>,
+            uploader: T::AccountId,
+            cid: ManifestCIDOf<T>,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+            Self::do_remove_storer(&who, &uploader, cid)?;
             Ok(().into())
         }
 
@@ -165,25 +185,58 @@ impl<T: Config> Pallet<T> {
         storage: &T::AccountId,
         manifest: ManifestMetadataOf<T>,
         cid: ManifestCIDOf<T>,
+        replication_factor: u8,
     ) -> DispatchResult {
+        let mut storer_vec = Vec::<T::AccountId>::new();
+        storer_vec.push(storage.clone());
+
         Manifests::<T>::insert(
             uploader,
             CID(cid),
             Manifest{
-                storage:Some(storage.clone()),
+                storage: storer_vec.to_owned(),
+                replication_factor,
                 manifest_data: ManifestData {
                     uploader: uploader.clone(),
                     manifest_metadata: manifest.clone(),
-                }
-            }       
+                },
+            }        
             );
 
-            Self::deposit_event(Event::ManifestOutput {
-                uploader: uploader.clone(),
-                storage: Some(storage.clone()),
-                manifest: manifest.to_vec(),
-            });    
-            Ok(())  
+        Self::deposit_event(Event::ManifestOutput {
+            uploader: uploader.clone(),
+            storage: storer_vec.to_owned(),
+            manifest: manifest.to_vec(),
+        });
+        Ok(()) 
+    }
+
+    pub fn do_upload_manifest(
+        uploader: &T::AccountId,
+        manifest: ManifestMetadataOf<T>,
+        cid: ManifestCIDOf<T>,
+        replication_factor: u8,
+    ) -> DispatchResult {
+        let empty = Vec::<T::AccountId>::new();
+        Manifests::<T>::insert(
+            uploader,
+            CID(cid),
+            Manifest{
+                storage: empty.to_owned(),
+                replication_factor,
+                manifest_data: ManifestData {
+                    uploader: uploader.clone(),
+                    manifest_metadata: manifest.clone(),
+                },
+            }        
+            );
+
+        Self::deposit_event(Event::ManifestOutput {
+            uploader: uploader.clone(),
+            storage: empty.to_owned(),
+            manifest: manifest.to_vec(),
+        });
+        Ok(())
     }
 
     pub fn do_storage_manifest(
@@ -195,48 +248,27 @@ impl<T: Config> Pallet<T> {
         uploader,
         CID(cid.clone()),
         |value| -> DispatchResult {
-            if let Some(manifest_info) = value {
-                if manifest_info.storage == None {
-                    manifest_info.storage = Some(storage.clone());
-                    Ok(())
+            if let Some(manifest) = value {
+                if manifest.storage.len() < manifest.replication_factor.into() {
+                    if !manifest.storage.contains(storage){
+                        manifest.storage.push(storage.clone());
+                        Ok(())
+                    } else {
+                        Err(sp_runtime::DispatchError::Other("Error: User is already a storer"))
+                    }
                 } else {
-                    Err(sp_runtime::DispatchError::Other("Already Stored"))
+                    Err(sp_runtime::DispatchError::Other("Error: Max Storage"))
                 }
             } else {
-                Err(sp_runtime::DispatchError::Other("Already Stored"))
+                Err(sp_runtime::DispatchError::Other("Error: Not found Storer Vector"))
             }
         }       
         )?;
 
         Self::deposit_event(Event::StorageManifestOutput {
             uploader: uploader.clone(),
-            storage: Some(storage.clone()),
+            storage: storage.clone(),
             cid: cid.to_vec(),
-        });
-        Ok(())
-    }
-
-    pub fn do_upload_manifest(
-        uploader: &T::AccountId,
-        manifest: ManifestMetadataOf<T>,
-        cid: ManifestCIDOf<T>,
-    ) -> DispatchResult {
-        Manifests::<T>::insert(
-            uploader,
-            CID(cid),
-            Manifest{
-                storage: None::<T::AccountId>,
-                manifest_data: ManifestData {
-                    uploader: uploader.clone(),
-                    manifest_metadata: manifest.clone(),
-                }
-            }        
-            );
-
-        Self::deposit_event(Event::ManifestOutput {
-            uploader: uploader.clone(),
-            storage: None,
-            manifest: manifest.to_vec(),
         });
         Ok(())
     }
@@ -252,5 +284,36 @@ impl<T: Config> Pallet<T> {
             cid: cid.to_vec(),
         });
         Ok(())
+    }
+
+    pub fn do_remove_storer(
+        storage: &T::AccountId,
+        uploader: &T::AccountId,
+        cid: ManifestCIDOf<T>,
+    ) -> DispatchResult {
+        let mut removed_storer = None;
+        Manifests::<T>::try_mutate(
+            uploader,
+            CID(cid.clone()),
+            |value| -> DispatchResult {
+                if let Some(manifest) = value {
+                    if !manifest.storage.contains(storage){
+                            removed_storer = manifest.storage.pop();
+                            Ok(())
+                        } else {
+                            Err(sp_runtime::DispatchError::Other("Error: User is not a storer"))
+                        }
+                    } else {
+                        Err(sp_runtime::DispatchError::Other("Error: Not found Storer Vector"))
+                    }
+                }       
+            )?;
+    
+            Self::deposit_event(Event::RemoveStorerOutput {
+                uploader: uploader.clone(),
+                storage: removed_storer,
+                cid: cid.to_vec(),
+            });
+            Ok(())
     }
 }
