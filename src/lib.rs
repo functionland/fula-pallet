@@ -297,8 +297,9 @@ impl<T: Config> Pallet<T> {
             CID(cid.clone()),
             |value| -> DispatchResult {
                 if let Some(manifest) = value {
-                    if !manifest.storage.contains(storage){
-                            removed_storer = manifest.storage.pop();
+                    if manifest.storage.contains(storage){
+                            let value_removed = manifest.storage.swap_remove(manifest.storage.iter().position(|x| { *x == storage.clone()}).unwrap());
+                            removed_storer = Some(value_removed);
                             Ok(())
                         } else {
                             Err(sp_runtime::DispatchError::Other("Error: User is not a storer"))
