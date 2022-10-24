@@ -1,7 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use codec::{Decode, Encode, MaxEncodedLen};
-use frame_support::{dispatch::DispatchResult, traits::Get, BoundedVec};
+use frame_support::{dispatch::DispatchResult, traits::Get, BoundedVec, ensure};
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
@@ -112,6 +112,9 @@ pub mod pallet {
         NoneValue,
         StorageOverflow,
         InUse,
+        MaxStorage,
+        AlreadyStored,
+        ManifestNotFound,
     }
 
     // Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -248,20 +251,13 @@ impl<T: Config> Pallet<T> {
         uploader,
         CID(cid.clone()),
         |value| -> DispatchResult {
+            ensure!(*value != None, Error::<T>::ManifestNotFound);
             if let Some(manifest) = value {
-                if manifest.storage.len() < manifest.replication_factor.into() {
-                    if !manifest.storage.contains(storage){
-                        manifest.storage.push(storage.clone());
-                        Ok(())
-                    } else {
-                        Err(sp_runtime::DispatchError::Other("Error: User is already a storer"))
-                    }
-                } else {
-                    Err(sp_runtime::DispatchError::Other("Error: Max Storage"))
-                }
-            } else {
-                Err(sp_runtime::DispatchError::Other("Error: Not found Storer Vector"))
+                ensure!(manifest.storage.len() < manifest.replication_factor.into(), Error::<T>::MaxStorage);
+                ensure!(!manifest.storage.contains(storage), Error::<T>::AlreadyStored);
+                manifest.storage.push(storage.clone());
             }
+            Ok(())
         }       
         )?;
 
