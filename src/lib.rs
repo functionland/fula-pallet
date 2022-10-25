@@ -214,13 +214,15 @@ impl<T: Config> Pallet<T> {
         Ok(()) 
     }
 
-    pub fn do_upload_manifest(
+    pub fn do_upload_manifest( //testing this one
         uploader: &T::AccountId,
         manifest: ManifestMetadataOf<T>,
         cid: ManifestCIDOf<T>,
         replication_factor: u8,
     ) -> DispatchResult {
         let empty = Vec::<T::AccountId>::new();
+        let result = Manifests::<T>::try_get(uploader.clone(), CID(cid.clone()));
+        ensure!(result.is_err(), Error::<T>::AlreadyStored);
         Manifests::<T>::insert(
             uploader,
             CID(cid),
@@ -292,6 +294,7 @@ impl<T: Config> Pallet<T> {
             uploader,
             CID(cid.clone()),
             |value| -> DispatchResult {
+                ensure!(*value != None, Error::<T>::ManifestNotFound);
                 if let Some(manifest) = value {
                     if manifest.storage.contains(storage){
                             let value_removed = manifest.storage.swap_remove(manifest.storage.iter().position(|x| { *x == storage.clone()}).unwrap());
