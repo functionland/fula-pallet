@@ -55,6 +55,7 @@ pub mod pallet {
 
     pub type ManifestMetadataOf<T> = BoundedVec<u8, <T as Config>::MaxManifestMetadata>;
     pub type ManifestCIDOf<T> = BoundedVec<u8, <T as Config>::MaxCID>;
+    pub type PoolIDOf = u16;
     pub type CIDOf<T> = CID<ManifestCIDOf<T>>;
     pub type ManifestOf<T> = Manifest<<T as frame_system::Config>::AccountId, ManifestMetadataOf<T>>;
 
@@ -73,10 +74,13 @@ pub mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn manifests)]
-    pub(super) type Manifests<T: Config> = StorageDoubleMap<
+    pub(super) type Manifests<T: Config> = StorageNMap<
         _,
-        Blake2_128Concat, T::AccountId,
-        Blake2_128Concat, CIDOf<T>,
+        (
+            NMapKey<Blake2_128Concat, T::AccountId>,
+            NMapKey<Blake2_128Concat, CIDOf<T>>,
+            NMapKey<Blake2_128Concat, PoolIDOf>,
+        ),
         ManifestOf<T>
     >;
 
@@ -111,9 +115,10 @@ pub mod pallet {
     pub enum Error<T> {
         NoneValue,
         StorageOverflow,
-        InUse,
-        MaxStorage,
-        AlreadyStored,
+        ReplicationFactorLimitReached,
+        AccountAlreadyStorer,
+        AccountNotStorer,
+        ManifestAlreadyExist,
         ManifestNotFound,
     }
 
@@ -129,10 +134,11 @@ pub mod pallet {
             storage: T::AccountId,
             manifest: ManifestMetadataOf<T>,
             cid: ManifestCIDOf<T>,
+            pool_id: u16,
             replication_factor: u8,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            Self::do_update_manifest(&who, &storage, manifest, cid, replication_factor)?;
+            Self::do_update_manifest(&who, &storage, manifest, cid, pool_id, replication_factor)?;
             Ok(().into())
         }
 
@@ -141,10 +147,11 @@ pub mod pallet {
             origin: OriginFor<T>,
             manifest: ManifestMetadataOf<T>,
             cid: ManifestCIDOf<T>,
+            pool_id: u16,
             replication_factor: u8,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            Self::do_upload_manifest(&who, manifest, cid, replication_factor)?;
+            Self::do_upload_manifest(&who, manifest, cid, pool_id, replication_factor)?;
             Ok(().into())
         }
 
@@ -153,9 +160,10 @@ pub mod pallet {
             origin: OriginFor<T>,
             uploader: T::AccountId,
             cid: ManifestCIDOf<T>,
+            pool_id: u16,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            Self::do_storage_manifest(&who, &uploader, cid)?;
+            Self::do_storage_manifest(&who, &uploader, cid, pool_id)?;
             Ok(().into())
         }
 
@@ -164,9 +172,10 @@ pub mod pallet {
             origin: OriginFor<T>,
             uploader: T::AccountId,
             cid: ManifestCIDOf<T>,
+            pool_id: u16,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            Self::do_remove_storer(&who, &uploader, cid)?;
+            Self::do_remove_storer(&who, &uploader, cid, pool_id)?;
             Ok(().into())
         }
 
@@ -174,58 +183,32 @@ pub mod pallet {
         pub fn remove_manifest(
             origin: OriginFor<T>,
             cid: ManifestCIDOf<T>,
+            pool_id: u16,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            Self::do_remove_manifest(&who, cid)?;
+            Self::do_remove_manifest(&who, cid, pool_id)?;
             Ok(().into())
         }
     }
 }
 
 impl<T: Config> Pallet<T> {
-    pub fn do_update_manifest(
-        uploader: &T::AccountId,
-        storage: &T::AccountId,
-        manifest: ManifestMetadataOf<T>,
-        cid: ManifestCIDOf<T>,
-        replication_factor: u8,
-    ) -> DispatchResult {
-        let mut storer_vec = Vec::<T::AccountId>::new();
-        storer_vec.push(storage.clone());
-
-        Manifests::<T>::insert(
-            uploader,
-            CID(cid),
-            Manifest{
-                storage: storer_vec.to_owned(),
-                replication_factor,
-                manifest_data: ManifestData {
-                    uploader: uploader.clone(),
-                    manifest_metadata: manifest.clone(),
-                },
-            }        
-            );
-
-        Self::deposit_event(Event::ManifestOutput {
-            uploader: uploader.clone(),
-            storage: storer_vec.to_owned(),
-            manifest: manifest.to_vec(),
-        });
-        Ok(()) 
-    }
 
     pub fn do_upload_manifest( //testing this one
         uploader: &T::AccountId,
         manifest: ManifestMetadataOf<T>,
         cid: ManifestCIDOf<T>,
+        pool_id: u16,
         replication_factor: u8,
     ) -> DispatchResult {
+        ensure!(
+            Manifests::<T>::try_get((uploader.clone(), CID(cid.clone()), pool_id)).is_err(), 
+            Error::<T>::ManifestNotFound
+        );
         let empty = Vec::<T::AccountId>::new();
-        let result = Manifests::<T>::try_get(uploader.clone(), CID(cid.clone()));
-        ensure!(result.is_err(), Error::<T>::AlreadyStored);
         Manifests::<T>::insert(
-            uploader,
-            CID(cid),
+            (uploader,
+            CID(cid),pool_id),
             Manifest{
                 storage: empty.to_owned(),
                 replication_factor,
@@ -244,19 +227,62 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    pub fn do_update_manifest(
+        uploader: &T::AccountId,
+        storage: &T::AccountId,
+        manifest: ManifestMetadataOf<T>,
+        cid: ManifestCIDOf<T>,
+        pool_id: u16,
+        replication_factor: u8,
+    ) -> DispatchResult {
+        ensure!(
+            Manifests::<T>::try_get((uploader.clone(), CID(cid.clone()), pool_id)).is_ok(), 
+            Error::<T>::ManifestNotFound
+        );
+        let mut storer_vec = Vec::<T::AccountId>::new();
+        storer_vec.push(storage.clone());
+
+        Manifests::<T>::insert(
+            (
+                uploader,
+                CID(cid),
+                pool_id
+            ),
+            Manifest{
+                storage: storer_vec.to_owned(),
+                replication_factor,
+                manifest_data: ManifestData {
+                    uploader: uploader.clone(),
+                    manifest_metadata: manifest.clone(),
+                },
+            }        
+            );
+
+        Self::deposit_event(Event::ManifestOutput {
+            uploader: uploader.clone(),
+            storage: storer_vec.to_owned(),
+            manifest: manifest.to_vec(),
+        });
+        Ok(()) 
+    }
+
     pub fn do_storage_manifest(
         storage: &T::AccountId,
         uploader: &T::AccountId,
         cid: ManifestCIDOf<T>,
+        pool_id: u16,
     ) -> DispatchResult {
         Manifests::<T>::try_mutate(
-        uploader,
-        CID(cid.clone()),
+        (uploader,
+        CID(cid.clone()),pool_id),
         |value| -> DispatchResult {
-            ensure!(*value != None, Error::<T>::ManifestNotFound);
+            ensure!(
+                Manifests::<T>::try_get((uploader.clone(), CID(cid.clone()), pool_id)).is_ok(), 
+                Error::<T>::ManifestNotFound
+            );
             if let Some(manifest) = value {
-                ensure!(manifest.storage.len() < manifest.replication_factor.into(), Error::<T>::MaxStorage);
-                ensure!(!manifest.storage.contains(storage), Error::<T>::AlreadyStored);
+                ensure!(manifest.storage.len() < manifest.replication_factor.into(), Error::<T>::ReplicationFactorLimitReached);
+                ensure!(!manifest.storage.contains(storage), Error::<T>::AccountAlreadyStorer);
                 manifest.storage.push(storage.clone());
             }
             Ok(())
@@ -274,8 +300,13 @@ impl<T: Config> Pallet<T> {
     pub fn do_remove_manifest(
         uploader: &T::AccountId,
         cid: ManifestCIDOf<T>,
+        pool_id: u16,
     ) -> DispatchResult {
-        Manifests::<T>::remove(uploader, CID(cid.clone()));
+        ensure!(
+            Manifests::<T>::try_get((uploader.clone(), CID(cid.clone()), pool_id)).is_ok(), 
+            Error::<T>::ManifestNotFound
+        );
+        Manifests::<T>::remove((uploader, CID(cid.clone()),pool_id));
 
         Self::deposit_event(Event::ManifestRemoved {
             uploader: uploader.clone(),
@@ -288,24 +319,24 @@ impl<T: Config> Pallet<T> {
         storage: &T::AccountId,
         uploader: &T::AccountId,
         cid: ManifestCIDOf<T>,
+        pool_id: u16,
     ) -> DispatchResult {
         let mut removed_storer = None;
         Manifests::<T>::try_mutate(
-            uploader,
-            CID(cid.clone()),
+            (uploader,
+            CID(cid.clone()),pool_id),
             |value| -> DispatchResult {
-                ensure!(*value != None, Error::<T>::ManifestNotFound);
+                ensure!(
+                    Manifests::<T>::try_get((uploader.clone(), CID(cid.clone()), pool_id)).is_ok(), 
+                    Error::<T>::ManifestNotFound
+                );
                 if let Some(manifest) = value {
-                    if manifest.storage.contains(storage){
-                            let value_removed = manifest.storage.swap_remove(manifest.storage.iter().position(|x| { *x == storage.clone()}).unwrap());
-                            removed_storer = Some(value_removed);
-                            Ok(())
-                        } else {
-                            Err(sp_runtime::DispatchError::Other("Error: User is not a storer"))
-                        }
-                    } else {
-                        Err(sp_runtime::DispatchError::Other("Error: Not found Storer Vector"))
-                    }
+                    ensure!(manifest.storage.contains(storage), Error::<T>::AccountNotStorer);
+                    let value_removed = manifest.storage.swap_remove(manifest.storage.iter().position(|x| { *x == storage.clone()}).unwrap());
+                    removed_storer = Some(value_removed);
+                    
+                }
+                Ok(())
                 }       
             )?;
     
