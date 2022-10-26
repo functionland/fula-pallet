@@ -93,20 +93,24 @@ pub mod pallet {
             uploader: T::AccountId,
             storage: Vec<T::AccountId>,
             manifest: Vec<u8>,
+            pool_id: u16,
         },
         StorageManifestOutput {
             uploader: T::AccountId,
             storage: T::AccountId,
             cid: Vec<u8>,
+            pool_id: u16,
         },
         RemoveStorerOutput {
             uploader: T::AccountId,
             storage: Option<T::AccountId>,
             cid: Vec<u8>,
+            pool_id: u16,
         },
         ManifestRemoved {
             uploader: T::AccountId,
             cid: Vec<u8>,
+            pool_id: u16,
         },
     }
 
@@ -168,6 +172,18 @@ pub mod pallet {
         }
 
         #[pallet::weight(10_000)]
+        pub fn remove_storing_manifest(
+            origin: OriginFor<T>,
+            storage: T::AccountId,
+            cid: ManifestCIDOf<T>,
+            pool_id: u16,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+            Self::do_remove_storer(&storage, &who, cid, pool_id)?;
+            Ok(().into())
+        }
+
+        #[pallet::weight(10_000)]
         pub fn remove_storer(
             origin: OriginFor<T>,
             uploader: T::AccountId,
@@ -223,6 +239,7 @@ impl<T: Config> Pallet<T> {
             uploader: uploader.clone(),
             storage: empty.to_owned(),
             manifest: manifest.to_vec(),
+            pool_id: pool_id.clone(),
         });
         Ok(())
     }
@@ -262,6 +279,7 @@ impl<T: Config> Pallet<T> {
             uploader: uploader.clone(),
             storage: storer_vec.to_owned(),
             manifest: manifest.to_vec(),
+            pool_id: pool_id.clone(),
         });
         Ok(()) 
     }
@@ -293,6 +311,7 @@ impl<T: Config> Pallet<T> {
             uploader: uploader.clone(),
             storage: storage.clone(),
             cid: cid.to_vec(),
+            pool_id: pool_id.clone(),
         });
         Ok(())
     }
@@ -311,6 +330,7 @@ impl<T: Config> Pallet<T> {
         Self::deposit_event(Event::ManifestRemoved {
             uploader: uploader.clone(),
             cid: cid.to_vec(),
+            pool_id: pool_id.clone(),
         });
         Ok(())
     }
@@ -344,6 +364,7 @@ impl<T: Config> Pallet<T> {
                 uploader: uploader.clone(),
                 storage: removed_storer,
                 cid: cid.to_vec(),
+                pool_id: pool_id.clone(),
             });
             Ok(())
     }
