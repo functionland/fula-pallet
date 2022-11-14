@@ -2,7 +2,7 @@ use crate::{mock::*, ManifestMetadataOf, ManifestCIDOf};
 use frame_support::assert_ok;
 use sp_runtime::traits::Hash;
 
-fn last_event() -> Event {
+fn last_event() -> RuntimeEvent {
     frame_system::Pallet::<Test>::events()
         .pop()
         .expect("Event expected")
@@ -36,9 +36,9 @@ fn update_manifest() {
         let cid_hash = <Test as frame_system::Config>::Hashing::hash(cid);
         let cid_hash: ManifestCIDOf<Test> = cid_hash.as_bytes().to_vec().try_into().unwrap();
 
-        assert_ok!(Fula::update_manifest(Origin::signed(1), 2, hash.clone(),cid_hash.clone(),1,1));
+        assert_ok!(Fula::update_manifest(RuntimeOrigin::signed(1), 2, hash.clone(),cid_hash.clone(),1,1));
 
-        if let Event::Fula(crate::Event::ManifestOutput { uploader, storage, manifest, pool_id }) = last_event() {
+        if let RuntimeEvent::Fula(crate::Event::ManifestOutput { uploader, storage, manifest, pool_id }) = last_event() {
             assert_eq!(uploader, 1);
             assert_eq!(storage, vec![2]);
             assert_eq!(manifest.to_vec(), hash.to_vec());
