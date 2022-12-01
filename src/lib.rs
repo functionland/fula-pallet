@@ -25,12 +25,20 @@ pub struct Manifest<AccountId, ManifestMetadataOf> {
     pub storage: Vec<AccountId>,
     pub replication_factor: ReplicationFactor,
     pub manifest_data: ManifestData<AccountId, ManifestMetadataOf>,
+    pub manifest_storage_data: ManifestStorageData,
 }
 
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct ManifestData<AccountId, ManifestMetadataOf> {
     pub uploader: AccountId,
     pub manifest_metadata: ManifestMetadataOf,
+}
+
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub struct ManifestStorageData {
+    pub active_cycles: Cycles,
+    pub missed_cycles: Cycles,
+    pub active_days: ActiveDays,
 }
 
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
@@ -57,6 +65,8 @@ pub mod pallet {
     pub type ManifestCIDOf<T> = BoundedVec<u8, <T as Config>::MaxCID>;
     pub type PoolID = u32;
     pub type ReplicationFactor = u16;
+    pub type Cycles = u16;
+    pub type ActiveDays = i32;
     pub type CIDOf<T> = CID<ManifestCIDOf<T>>;
     pub type ManifestOf<T> =
         Manifest<<T as frame_system::Config>::AccountId, ManifestMetadataOf<T>>;
@@ -114,6 +124,14 @@ pub mod pallet {
             cid: Vec<u8>,
             pool_id: PoolID,
         },
+        ManifestStorageUpdated {
+            uploader: T::AccountId,
+            pool_id: PoolID,
+            cid: Vec<u8>,
+            active_cycles: Cycles,
+            missed_cycles: Cycles,
+            active_days: ActiveDays,
+        },
     }
 
     // Errors inform users that something went wrong.
@@ -138,14 +156,21 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn update_manifest(
             origin: OriginFor<T>,
-            storage: T::AccountId,
-            manifest: ManifestMetadataOf<T>,
             cid: ManifestCIDOf<T>,
             pool_id: PoolID,
-            replication_factor: ReplicationFactor,
+            active_cycles: Cycles,
+            missed_cycles: Cycles,
+            active_days: ActiveDays,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            Self::do_update_manifest(&who, &storage, manifest, cid, pool_id, replication_factor)?;
+            Self::do_update_manifest(
+                &who,
+                cid,
+                pool_id,
+                active_cycles,
+                missed_cycles,
+                active_days,
+            )?;
             Ok(().into())
         }
 
@@ -234,6 +259,11 @@ impl<T: Config> Pallet<T> {
                     uploader: uploader.clone(),
                     manifest_metadata: manifest.clone(),
                 },
+                manifest_storage_data: ManifestStorageData {
+                    active_cycles: 0,
+                    missed_cycles: 0,
+                    active_days: 0,
+                },
             },
         );
 
@@ -248,37 +278,36 @@ impl<T: Config> Pallet<T> {
 
     pub fn do_update_manifest(
         uploader: &T::AccountId,
-        storage: &T::AccountId,
-        manifest: ManifestMetadataOf<T>,
         cid: ManifestCIDOf<T>,
         pool_id: PoolID,
-        replication_factor: ReplicationFactor,
+        active_cycles: Cycles,
+        missed_cycles: Cycles,
+        active_days: ActiveDays,
     ) -> DispatchResult {
         ensure!(
             Manifests::<T>::try_get((pool_id, uploader.clone(), CID(cid.clone()))).is_ok(),
             Error::<T>::ManifestNotFound
         );
-        ensure!(replication_factor > 0, Error::<T>::ReplicationFactorInvalid);
-        let mut storer_vec = Vec::<T::AccountId>::new();
-        storer_vec.push(storage.clone());
 
-        Manifests::<T>::insert(
-            (pool_id, uploader, CID(cid)),
-            Manifest {
-                storage: storer_vec.to_owned(),
-                replication_factor,
-                manifest_data: ManifestData {
-                    uploader: uploader.clone(),
-                    manifest_metadata: manifest.clone(),
-                },
+        Manifests::<T>::try_mutate(
+            (pool_id, uploader, CID(cid.clone())),
+            |value| -> DispatchResult {
+                if let Some(manifest) = value {
+                    manifest.manifest_storage_data.active_cycles = active_cycles;
+                    manifest.manifest_storage_data.missed_cycles = missed_cycles;
+                    manifest.manifest_storage_data.active_days = active_days;
+                }
+                Ok(())
             },
-        );
+        )?;
 
-        Self::deposit_event(Event::ManifestOutput {
+        Self::deposit_event(Event::ManifestStorageUpdated {
             uploader: uploader.clone(),
-            storage: storer_vec.to_owned(),
-            manifest: manifest.to_vec(),
             pool_id: pool_id.clone(),
+            cid: cid.to_vec(),
+            active_cycles,
+            missed_cycles,
+            active_days,
         });
         Ok(())
     }
