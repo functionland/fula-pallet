@@ -5,6 +5,7 @@ use frame_support::{dispatch::DispatchResult, ensure, traits::Get, BoundedVec};
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
+use fula_pool::PoolInterface;
 
 /// Edit this file to define custom logic or remove it if it is not needed.
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
@@ -59,11 +60,12 @@ pub mod pallet {
         #[pallet::constant]
         type MaxManifestMetadata: Get<u32>;
         type MaxCID: Get<u32>;
+        type Pool: PoolInterface;
     }
 
     pub type ManifestMetadataOf<T> = BoundedVec<u8, <T as Config>::MaxManifestMetadata>;
     pub type ManifestCIDOf<T> = BoundedVec<u8, <T as Config>::MaxCID>;
-    pub type PoolID = u32;
+    pub type PoolIdOf<T> = <<T as Config>::Pool as PoolInterface>::PoolId;
     pub type ReplicationFactor = u16;
     pub type Cycles = u16;
     pub type ActiveDays = i32;
@@ -89,7 +91,7 @@ pub mod pallet {
     pub(super) type Manifests<T: Config> = StorageNMap<
         _,
         (
-            NMapKey<Blake2_128Concat, PoolID>,
+            NMapKey<Blake2_128Concat, PoolIdOf<T>>,
             NMapKey<Blake2_128Concat, T::AccountId>,
             NMapKey<Blake2_128Concat, CIDOf<T>>,
         ),
@@ -105,28 +107,28 @@ pub mod pallet {
             uploader: T::AccountId,
             storage: Vec<T::AccountId>,
             manifest: Vec<u8>,
-            pool_id: PoolID,
+            pool_id: PoolIdOf<T>,
         },
         StorageManifestOutput {
             uploader: T::AccountId,
             storage: T::AccountId,
             cid: Vec<u8>,
-            pool_id: PoolID,
+            pool_id: PoolIdOf<T>,
         },
         RemoveStorerOutput {
             uploader: T::AccountId,
             storage: Option<T::AccountId>,
             cid: Vec<u8>,
-            pool_id: PoolID,
+            pool_id: PoolIdOf<T>,
         },
         ManifestRemoved {
             uploader: T::AccountId,
             cid: Vec<u8>,
-            pool_id: PoolID,
+            pool_id: PoolIdOf<T>,
         },
         ManifestStorageUpdated {
             uploader: T::AccountId,
-            pool_id: PoolID,
+            pool_id: PoolIdOf<T>,
             cid: Vec<u8>,
             active_cycles: Cycles,
             missed_cycles: Cycles,
@@ -157,7 +159,7 @@ pub mod pallet {
         pub fn update_manifest(
             origin: OriginFor<T>,
             cid: ManifestCIDOf<T>,
-            pool_id: PoolID,
+            pool_id: PoolIdOf<T>,
             active_cycles: Cycles,
             missed_cycles: Cycles,
             active_days: ActiveDays,
@@ -179,7 +181,7 @@ pub mod pallet {
             origin: OriginFor<T>,
             manifest: ManifestMetadataOf<T>,
             cid: ManifestCIDOf<T>,
-            pool_id: PoolID,
+            pool_id: PoolIdOf<T>,
             replication_factor: ReplicationFactor,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
@@ -192,7 +194,7 @@ pub mod pallet {
             origin: OriginFor<T>,
             uploader: T::AccountId,
             cid: ManifestCIDOf<T>,
-            pool_id: PoolID,
+            pool_id: PoolIdOf<T>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             Self::do_storage_manifest(&who, &uploader, cid, pool_id)?;
@@ -204,7 +206,7 @@ pub mod pallet {
             origin: OriginFor<T>,
             storage: T::AccountId,
             cid: ManifestCIDOf<T>,
-            pool_id: PoolID,
+            pool_id: PoolIdOf<T>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             Self::do_remove_storer(&storage, &who, cid, pool_id)?;
@@ -216,7 +218,7 @@ pub mod pallet {
             origin: OriginFor<T>,
             uploader: T::AccountId,
             cid: ManifestCIDOf<T>,
-            pool_id: PoolID,
+            pool_id: PoolIdOf<T>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             Self::do_remove_storer(&who, &uploader, cid, pool_id)?;
@@ -227,7 +229,7 @@ pub mod pallet {
         pub fn remove_manifest(
             origin: OriginFor<T>,
             cid: ManifestCIDOf<T>,
-            pool_id: PoolID,
+            pool_id: PoolIdOf<T>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             Self::do_remove_manifest(&who, cid, pool_id)?;
@@ -241,7 +243,7 @@ impl<T: Config> Pallet<T> {
         uploader: &T::AccountId,
         manifest: ManifestMetadataOf<T>,
         cid: ManifestCIDOf<T>,
-        pool_id: PoolID,
+        pool_id: PoolIdOf<T>,
         replication_factor: ReplicationFactor,
     ) -> DispatchResult {
         ensure!(
@@ -279,7 +281,7 @@ impl<T: Config> Pallet<T> {
     pub fn do_update_manifest(
         uploader: &T::AccountId,
         cid: ManifestCIDOf<T>,
-        pool_id: PoolID,
+        pool_id: PoolIdOf<T>,
         active_cycles: Cycles,
         missed_cycles: Cycles,
         active_days: ActiveDays,
@@ -316,7 +318,7 @@ impl<T: Config> Pallet<T> {
         storage: &T::AccountId,
         uploader: &T::AccountId,
         cid: ManifestCIDOf<T>,
-        pool_id: PoolID,
+        pool_id: PoolIdOf<T>,
     ) -> DispatchResult {
         ensure!(
             Manifests::<T>::try_get((pool_id, uploader.clone(), CID(cid.clone()))).is_ok(),
@@ -352,7 +354,7 @@ impl<T: Config> Pallet<T> {
     pub fn do_remove_manifest(
         uploader: &T::AccountId,
         cid: ManifestCIDOf<T>,
-        pool_id: PoolID,
+        pool_id: PoolIdOf<T>,
     ) -> DispatchResult {
         ensure!(
             Manifests::<T>::try_get((pool_id, uploader.clone(), CID(cid.clone()))).is_ok(),
@@ -372,7 +374,7 @@ impl<T: Config> Pallet<T> {
         storage: &T::AccountId,
         uploader: &T::AccountId,
         cid: ManifestCIDOf<T>,
-        pool_id: PoolID,
+        pool_id: PoolIdOf<T>,
     ) -> DispatchResult {
         ensure!(
             Manifests::<T>::try_get((pool_id, uploader.clone(), CID(cid.clone()))).is_ok(),
