@@ -25,7 +25,6 @@ pub struct Manifest<AccountId, ManifestMetadataOf> {
     pub storage: Vec<AccountId>,
     pub replication_factor: ReplicationFactor,
     pub manifest_data: ManifestData<AccountId, ManifestMetadataOf>,
-    pub manifest_storage_data: ManifestStorageData,
 }
 
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
@@ -76,14 +75,6 @@ pub mod pallet {
     #[pallet::generate_store(pub(super) trait Store)]
     pub struct Pallet<T>(_);
 
-    // The pallet's runtime storage items.
-    // https://docs.substrate.io/v3/runtime/storage
-    #[pallet::storage]
-    #[pallet::getter(fn something)]
-    // Learn more about declaring storage items:
-    // https://docs.substrate.io/v3/runtime/storage#declaring-storage-items
-    pub type Something<T> = StorageValue<_, u32>;
-
     #[pallet::storage]
     #[pallet::getter(fn manifests)]
     pub(super) type Manifests<T: Config> = StorageNMap<
@@ -94,6 +85,18 @@ pub mod pallet {
             NMapKey<Blake2_128Concat, CIDOf<T>>,
         ),
         ManifestOf<T>,
+    >;
+
+    #[pallet::storage]
+    #[pallet::getter(fn manifests_storage_data)]
+    pub(super) type ManifestsStorerData<T: Config> = StorageNMap<
+        _,
+        (
+            NMapKey<Blake2_128Concat, PoolID>,
+            NMapKey<Blake2_128Concat, T::AccountId>,
+            NMapKey<Blake2_128Concat, CIDOf<T>>,
+        ),
+        ManifestStorageData,
     >;
 
     // Pallets use events to inform users when important changes are made.
@@ -125,7 +128,7 @@ pub mod pallet {
             pool_id: PoolID,
         },
         ManifestStorageUpdated {
-            uploader: T::AccountId,
+            storer: T::AccountId,
             pool_id: PoolID,
             cid: Vec<u8>,
             active_cycles: Cycles,
@@ -145,6 +148,7 @@ pub mod pallet {
         AccountNotStorer,
         ManifestAlreadyExist,
         ManifestNotFound,
+        ManifestNotStored,
     }
 
     // Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -259,11 +263,6 @@ impl<T: Config> Pallet<T> {
                     uploader: uploader.clone(),
                     manifest_metadata: manifest.clone(),
                 },
-                manifest_storage_data: ManifestStorageData {
-                    active_cycles: 0,
-                    missed_cycles: 0,
-                    active_days: 0,
-                },
             },
         );
 
@@ -277,7 +276,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn do_update_manifest(
-        uploader: &T::AccountId,
+        storer: &T::AccountId,
         cid: ManifestCIDOf<T>,
         pool_id: PoolID,
         active_cycles: Cycles,
@@ -285,24 +284,24 @@ impl<T: Config> Pallet<T> {
         active_days: ActiveDays,
     ) -> DispatchResult {
         ensure!(
-            Manifests::<T>::try_get((pool_id, uploader.clone(), CID(cid.clone()))).is_ok(),
-            Error::<T>::ManifestNotFound
+            ManifestsStorerData::<T>::try_get((pool_id, storer.clone(), CID(cid.clone()))).is_ok(),
+            Error::<T>::ManifestNotStored
         );
 
-        Manifests::<T>::try_mutate(
-            (pool_id, uploader, CID(cid.clone())),
+        ManifestsStorerData::<T>::try_mutate(
+            (pool_id, storer, CID(cid.clone())),
             |value| -> DispatchResult {
                 if let Some(manifest) = value {
-                    manifest.manifest_storage_data.active_cycles = active_cycles;
-                    manifest.manifest_storage_data.missed_cycles = missed_cycles;
-                    manifest.manifest_storage_data.active_days = active_days;
+                    manifest.active_cycles = active_cycles;
+                    manifest.missed_cycles = missed_cycles;
+                    manifest.active_days = active_days;
                 }
                 Ok(())
             },
         )?;
 
         Self::deposit_event(Event::ManifestStorageUpdated {
-            uploader: uploader.clone(),
+            storer: storer.clone(),
             pool_id: pool_id.clone(),
             cid: cid.to_vec(),
             active_cycles,
@@ -339,6 +338,15 @@ impl<T: Config> Pallet<T> {
                 Ok(())
             },
         )?;
+
+        ManifestsStorerData::<T>::insert(
+            (pool_id, storage, CID(cid.clone())),
+            ManifestStorageData {
+                active_cycles: 0,
+                missed_cycles: 0,
+                active_days: 0,
+            },
+        );
 
         Self::deposit_event(Event::StorageManifestOutput {
             uploader: uploader.clone(),
