@@ -334,19 +334,18 @@ impl<T: Config> Pallet<T> {
                         Error::<T>::AccountAlreadyStorer
                     );
                     manifest.storage.push(storage.clone());
+                    ManifestsStorerData::<T>::insert(
+                        (pool_id, storage, CID(cid.clone())),
+                        ManifestStorageData {
+                            active_cycles: 0,
+                            missed_cycles: 0,
+                            active_days: 0,
+                        },
+                    );
                 }
                 Ok(())
             },
         )?;
-
-        ManifestsStorerData::<T>::insert(
-            (pool_id, storage, CID(cid.clone())),
-            ManifestStorageData {
-                active_cycles: 0,
-                missed_cycles: 0,
-                active_days: 0,
-            },
-        );
 
         Self::deposit_event(Event::StorageManifestOutput {
             uploader: uploader.clone(),
@@ -366,6 +365,21 @@ impl<T: Config> Pallet<T> {
             Manifests::<T>::try_get((pool_id, uploader.clone(), CID(cid.clone()))).is_ok(),
             Error::<T>::ManifestNotFound
         );
+        Manifests::<T>::try_mutate(
+            (pool_id, uploader, CID(cid.clone())),
+            |value| -> DispatchResult {
+                if let Some(manifest) = value {
+                    for account in manifest.storage.iter() {
+                        ManifestsStorerData::<T>::remove((
+                            pool_id,
+                            account.clone(),
+                            CID(cid.clone()),
+                        ));
+                    }
+                }
+                Ok(())
+            },
+        )?;
         Manifests::<T>::remove((pool_id, uploader, CID(cid.clone())));
 
         Self::deposit_event(Event::ManifestRemoved {
@@ -402,6 +416,11 @@ impl<T: Config> Pallet<T> {
                             .position(|x| *x == storage.clone())
                             .unwrap(),
                     );
+                    ManifestsStorerData::<T>::remove((
+                        pool_id,
+                        value_removed.clone(),
+                        CID(cid.clone()),
+                    ));
                     removed_storer = Some(value_removed);
                 }
                 Ok(())
