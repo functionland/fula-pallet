@@ -2,10 +2,10 @@
 
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{dispatch::DispatchResult, ensure, traits::Get, BoundedVec};
+use fula_pool::PoolInterface;
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
-use fula_pool::PoolInterface;
 
 /// Edit this file to define custom logic or remove it if it is not needed.
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
@@ -60,7 +60,7 @@ pub mod pallet {
         #[pallet::constant]
         type MaxManifestMetadata: Get<u32>;
         type MaxCID: Get<u32>;
-        type Pool: PoolInterface;
+        type Pool: PoolInterface<AccountId = Self::AccountId>;
     }
 
     pub type ManifestMetadataOf<T> = BoundedVec<u8, <T as Config>::MaxManifestMetadata>;
@@ -145,6 +145,7 @@ pub mod pallet {
         ReplicationFactorInvalid,
         AccountAlreadyStorer,
         AccountNotStorer,
+        AccountNotInPool,
         ManifestAlreadyExist,
         ManifestNotFound,
     }
@@ -247,6 +248,10 @@ impl<T: Config> Pallet<T> {
         replication_factor: ReplicationFactor,
     ) -> DispatchResult {
         ensure!(
+            !T::Pool::is_member(uploader.clone(), pool_id),
+            Error::<T>::AccountNotInPool
+        );
+        ensure!(
             Manifests::<T>::try_get((pool_id, uploader.clone(), CID(cid.clone()))).is_err(),
             Error::<T>::ManifestAlreadyExist
         );
@@ -287,10 +292,13 @@ impl<T: Config> Pallet<T> {
         active_days: ActiveDays,
     ) -> DispatchResult {
         ensure!(
+            !T::Pool::is_member(uploader.clone(), pool_id),
+            Error::<T>::AccountNotInPool
+        );
+        ensure!(
             Manifests::<T>::try_get((pool_id, uploader.clone(), CID(cid.clone()))).is_ok(),
             Error::<T>::ManifestNotFound
         );
-
         Manifests::<T>::try_mutate(
             (pool_id, uploader, CID(cid.clone())),
             |value| -> DispatchResult {
@@ -320,6 +328,10 @@ impl<T: Config> Pallet<T> {
         cid: ManifestCIDOf<T>,
         pool_id: PoolIdOf<T>,
     ) -> DispatchResult {
+        ensure!(
+            !T::Pool::is_member(uploader.clone(), pool_id),
+            Error::<T>::AccountNotInPool
+        );
         ensure!(
             Manifests::<T>::try_get((pool_id, uploader.clone(), CID(cid.clone()))).is_ok(),
             Error::<T>::ManifestNotFound

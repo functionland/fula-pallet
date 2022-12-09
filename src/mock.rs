@@ -1,7 +1,7 @@
 use crate as functionland_fula;
 use frame_support::{
     parameter_types,
-    traits::{Everything, OnFinalize, OnInitialize}
+    traits::{Everything, OnFinalize, OnInitialize},
 };
 use frame_system as system;
 use sp_core::H256;
@@ -66,6 +66,7 @@ impl functionland_fula::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type MaxManifestMetadata = MaxManifestMetadata;
     type MaxCID = MaxCID;
+    type Pool = Pools;
 }
 
 // Build genesis storage according to the mock runtime.
