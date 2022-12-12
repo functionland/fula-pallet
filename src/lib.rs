@@ -423,3 +423,27 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 }
+
+pub trait FulaInterface {
+    type AccountId;
+    type PoolId;
+    type Cid;
+
+    fn remove(account: Self::AccountId, pool_id: Self::PoolId, cid: Vec<Self::Cid>) -> bool;
+}
+
+impl<T: Config> FulaInterface for Pallet<T> {
+    type AccountId = T::AccountId;
+    type PoolId = PoolIdOf<T>;
+    type Cid = ManifestCIDOf<T>;
+
+    fn remove(account: Self::AccountId, pool_id: Self::PoolId, cid: Vec<Self::Cid>) -> bool {
+        for value_cid in cid {
+            let result = Self::do_remove_manifest(&account, value_cid, pool_id);
+            if result.is_err() {
+                return false;
+            }
+        }
+        return true;
+    }
+}

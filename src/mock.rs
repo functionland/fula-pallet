@@ -66,7 +66,7 @@ impl functionland_fula::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type MaxManifestMetadata = MaxManifestMetadata;
     type MaxCID = MaxCID;
-    type Pool = Pools;
+    type Pool = PoolType;
 }
 
 // Build genesis storage according to the mock runtime.
