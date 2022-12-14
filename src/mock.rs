@@ -20,8 +20,9 @@ frame_support::construct_runtime!(
         NodeBlock = Block,
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
-        System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-        Fula: functionland_fula::{Pallet, Call, Storage, Event<T>},
+        System: frame_system,
+        Fula: functionland_fula,
+        Pool: fula_pool,
     }
 );
 
@@ -66,7 +67,19 @@ impl functionland_fula::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type MaxManifestMetadata = MaxManifestMetadata;
     type MaxCID = MaxCID;
-    type Pool = Pools;
+    type Pool = Pool;
+}
+
+parameter_types! {
+    pub const StringLimit: u32 = u8::MAX as u32;
+    pub const MaxPoolParticipants: u32 = u8::MAX as u32;
+}
+
+impl fula_pool::Config for Test {
+    type RuntimeEvent = RuntimeEvent;
+    type StringLimit = StringLimit;
+    type MaxPoolParticipants = MaxPoolParticipants;
+
 }
 
 // Build genesis storage according to the mock runtime.
