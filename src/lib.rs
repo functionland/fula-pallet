@@ -94,7 +94,7 @@ pub mod pallet {
     pub(super) type ManifestsStorerData<T: Config> = StorageNMap<
         _,
         (
-            NMapKey<Blake2_128Concat, PoolID>,
+            NMapKey<Blake2_128Concat, PoolIdOf<T>>,
             NMapKey<Blake2_128Concat, T::AccountId>,
             NMapKey<Blake2_128Concat, CIDOf<T>>,
         ),
@@ -131,7 +131,7 @@ pub mod pallet {
         },
         ManifestStorageUpdated {
             storer: T::AccountId,
-            pool_id: PoolID,
+            pool_id: PoolIdOf<T>,
             cid: Vec<u8>,
             active_cycles: Cycles,
             missed_cycles: Cycles,
