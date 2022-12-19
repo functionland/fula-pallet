@@ -252,7 +252,7 @@ impl<T: Config> Pallet<T> {
         replication_factor: ReplicationFactor,
     ) -> DispatchResult {
         ensure!(
-            !T::Pool::is_member(uploader.clone(), pool_id),
+            T::Pool::is_member(uploader.clone(), pool_id),
             Error::<T>::AccountNotInPool
         );
         ensure!(
@@ -291,6 +291,10 @@ impl<T: Config> Pallet<T> {
         active_days: ActiveDays,
     ) -> DispatchResult {
         ensure!(
+            T::Pool::is_member(storer.clone(), pool_id),
+            Error::<T>::AccountNotInPool
+        );
+        ensure!(
             ManifestsStorerData::<T>::try_get((pool_id, storer.clone(), CID(cid.clone()))).is_ok(),
             Error::<T>::ManifestNotStored
         );
@@ -325,7 +329,7 @@ impl<T: Config> Pallet<T> {
         pool_id: PoolIdOf<T>,
     ) -> DispatchResult {
         ensure!(
-            !T::Pool::is_member(uploader.clone(), pool_id),
+            T::Pool::is_member(storage.clone(), pool_id),
             Error::<T>::AccountNotInPool
         );
         ensure!(
