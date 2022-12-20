@@ -20,8 +20,9 @@ frame_support::construct_runtime!(
         NodeBlock = Block,
         UncheckedExtrinsic = UncheckedExtrinsic,
     {
-        System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-        Fula: functionland_fula::{Pallet, Call, Storage, Event<T>},
+        System: frame_system,
+        Fula: functionland_fula,
+        Pool: fula_pool,
     }
 );
 
@@ -35,8 +36,8 @@ impl system::Config for Test {
     type BlockWeights = ();
     type BlockLength = ();
     type DbWeight = ();
-    type Origin = Origin;
-    type Call = Call;
+    type RuntimeOrigin = RuntimeOrigin;
+    type RuntimeCall = RuntimeCall;
     type Index = u64;
     type BlockNumber = u64;
     type Hash = H256;
@@ -44,7 +45,7 @@ impl system::Config for Test {
     type AccountId = u64;
     type Lookup = IdentityLookup<Self::AccountId>;
     type Header = Header;
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type BlockHashCount = BlockHashCount;
     type Version = ();
     type PalletInfo = PalletInfo;
@@ -59,11 +60,25 @@ impl system::Config for Test {
 
 parameter_types! {
     pub const MaxManifestMetadata: u32 = 128;
+    pub const MaxCID: u32 = 128;
 }
 
 impl functionland_fula::Config for Test {
-    type Event = Event;
+    type RuntimeEvent = RuntimeEvent;
     type MaxManifestMetadata = MaxManifestMetadata;
+    type MaxCID = MaxCID;
+    type Pool = Pool;
+}
+
+parameter_types! {
+    pub const StringLimit: u32 = u8::MAX as u32;
+    pub const MaxPoolParticipants: u32 = u8::MAX as u32;
+}
+
+impl fula_pool::Config for Test {
+    type RuntimeEvent = RuntimeEvent;
+    type StringLimit = StringLimit;
+    type MaxPoolParticipants = MaxPoolParticipants;
 }
 
 // Build genesis storage according to the mock runtime.
