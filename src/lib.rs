@@ -252,10 +252,6 @@ impl<T: Config> Pallet<T> {
         replication_factor: ReplicationFactor,
     ) -> DispatchResult {
         ensure!(
-            T::Pool::is_member(uploader.clone(), pool_id),
-            Error::<T>::AccountNotInPool
-        );
-        ensure!(
             Manifests::<T>::try_get((pool_id, uploader.clone(), CID(cid.clone()))).is_err(),
             Error::<T>::ManifestAlreadyExist
         );
