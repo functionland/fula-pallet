@@ -119,7 +119,6 @@ pub mod pallet {
             cid: Vec<u8>,
         },
         RemoveStorerOutput {
-            uploader: T::AccountId,
             storage: Option<T::AccountId>,
             pool_id: PoolIdOf<T>,
             cid: Vec<u8>,
@@ -198,7 +197,6 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn storage_manifest(
             origin: OriginFor<T>,
-            uploader: T::AccountId,
             cid: ManifestCIDOf<T>,
             pool_id: PoolIdOf<T>,
         ) -> DispatchResultWithPostInfo {
@@ -208,26 +206,13 @@ pub mod pallet {
         }
 
         #[pallet::weight(10_000)]
-        pub fn remove_storer(
-            origin: OriginFor<T>,
-            storage: T::AccountId,
-            cid: ManifestCIDOf<T>,
-            pool_id: PoolIdOf<T>,
-        ) -> DispatchResultWithPostInfo {
-            let who = ensure_signed(origin)?;
-            Self::do_remove_storer(&storage, &who, pool_id, cid)?;
-            Ok(().into())
-        }
-
-        #[pallet::weight(10_000)]
         pub fn remove_stored_manifest(
             origin: OriginFor<T>,
-            uploader: T::AccountId,
             cid: ManifestCIDOf<T>,
             pool_id: PoolIdOf<T>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            Self::do_remove_storer(&who, &uploader, pool_id, cid)?;
+            Self::do_remove_storer(&who, pool_id, cid)?;
             Ok(().into())
         }
 
@@ -254,13 +239,13 @@ impl<T: Config> Pallet<T> {
     ) -> DispatchResult {
         ensure!(replication_factor > 0, Error::<T>::ReplicationFactorInvalid);
         let mut uploader_vec = Vec::new();
-        let mut storers_vec = Vec::new();
+        let storers_vec = Vec::new();
         let uploader_data = UploaderData {
             uploader: uploader.clone(),
             storers: storers_vec.to_owned(),
             replication_factor,
         };
-        if let Some(manifest) = Self::manifests(pool_id, CID(cid.clone())) {
+        if let Some(_manifest) = Self::manifests(pool_id, CID(cid.clone())) {
             Manifests::<T>::try_mutate(pool_id, CID(cid.clone()), |value| -> DispatchResult {
                 if let Some(manifest) = value {
                     manifest.users_data.push(uploader_data)
@@ -342,7 +327,7 @@ impl<T: Config> Pallet<T> {
         );
         Manifests::<T>::try_mutate(pool_id, CID(cid.clone()), |value| -> DispatchResult {
             if let Some(manifest) = value {
-                if let Some(index) = Self::get_uploader_value(manifest.users_data){
+                if let Some(index) = Self::get_uploader_value(manifest.users_data.to_owned()) {
                     let current_user_data = manifest.users_data.get(index);
                     ensure!(
                         current_user_data.is_some(),
@@ -365,7 +350,7 @@ impl<T: Config> Pallet<T> {
                             active_days: 0,
                         },
                     );
-                }                
+                }
             }
             Ok(())
         })?;
@@ -381,13 +366,14 @@ impl<T: Config> Pallet<T> {
     pub fn get_uploader_value(data: Vec<UploaderData<T::AccountId>>) -> Option<usize> {
         return data
             .iter()
-            .position(|x| x.replication_factor - x.storers.len() as u16 > 0)
+            .position(|x| x.replication_factor - x.storers.len() as u16 > 0);
     }
 
-    pub fn get_uploader_index(data: Vec<UploaderData<T::AccountId>>, account: T::AccountId) -> Option<usize> {
-        return data
-            .iter()
-            .position(|x| x.uploader == account)
+    pub fn get_uploader_index(
+        data: Vec<UploaderData<T::AccountId>>,
+        account: T::AccountId,
+    ) -> Option<usize> {
+        return data.iter().position(|x| x.uploader == account);
     }
 
     pub fn do_remove_manifest(
@@ -401,23 +387,30 @@ impl<T: Config> Pallet<T> {
         );
 
         Manifests::<T>::try_mutate(pool_id, CID(cid.clone()), |value| -> DispatchResult {
-        if let Some(manifest) = value {
-            if let Ok(uploader_index) = Self::get_uploader_index(manifest.users_data,uploader.clone()).ok_or(Error::<T>::AccountNotUploader){
-                for user_data in manifest.users_data.iter() {
-                    if user_data.uploader == uploader.clone() {
-                        for account in user_data.storers.iter(){
-                            ManifestsStorerData::<T>::remove((pool_id, account.clone(), CID(cid.clone())));
+            if let Some(manifest) = value {
+                if let Ok(uploader_index) =
+                    Self::get_uploader_index(manifest.users_data.to_owned(), uploader.clone())
+                        .ok_or(Error::<T>::AccountNotUploader)
+                {
+                    for user_data in manifest.users_data.iter() {
+                        if user_data.uploader == uploader.clone() {
+                            for account in user_data.storers.iter() {
+                                ManifestsStorerData::<T>::remove((
+                                    pool_id,
+                                    account.clone(),
+                                    CID(cid.clone()),
+                                ));
+                            }
                         }
-                    }          
+                    }
+                    if manifest.users_data.len() > 1 {
+                        manifest.users_data.remove(uploader_index);
+                    } else {
+                        Manifests::<T>::remove(pool_id, CID(cid.clone()));
+                    }
                 }
-                if manifest.users_data.len() > 1 {
-                    manifest.users_data.remove(uploader_index);
-                } else {
-                    Manifests::<T>::remove(pool_id, CID(cid.clone()));
-                }
-            }  
-        }
-        Ok(())
+            }
+            Ok(())
         })?;
 
         Self::deposit_event(Event::ManifestRemoved {
@@ -428,9 +421,28 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    pub fn verify_storer_contained(
+        data: Vec<UploaderData<T::AccountId>>,
+        account: &T::AccountId,
+    ) -> Option<usize> {
+        return data.iter().position(|x| x.storers.contains(account));
+    }
+
+    pub fn verify_account_in_storers(
+        data: Vec<UploaderData<T::AccountId>>,
+        index: usize,
+        account: T::AccountId,
+    ) -> Option<usize> {
+        return data
+            .get(index)
+            .unwrap()
+            .storers
+            .iter()
+            .position(|x| *x == account.clone());
+    }
+
     pub fn do_remove_storer(
         storer: &T::AccountId,
-        uploader: &T::AccountId,
         pool_id: PoolIdOf<T>,
         cid: ManifestCIDOf<T>,
     ) -> DispatchResult {
@@ -442,28 +454,36 @@ impl<T: Config> Pallet<T> {
         Manifests::<T>::try_mutate(pool_id, CID(cid.clone()), |value| -> DispatchResult {
             if let Some(manifest) = value {
                 ensure!(
-                    manifest.storage.contains(storage),
+                    Self::verify_storer_contained(manifest.users_data.to_owned(), storer).is_some(),
                     Error::<T>::AccountNotStorer
                 );
-                let value_removed = manifest.storage.swap_remove(
-                    manifest
-                        .storage
-                        .iter()
-                        .position(|x| *x == storage.clone())
-                        .unwrap(),
-                );
-                ManifestsStorerData::<T>::remove((
-                    pool_id,
-                    value_removed.clone(),
-                    CID(cid.clone()),
-                ));
-                removed_storer = Some(value_removed);
+                if let Some(uploader_index) =
+                    Self::verify_storer_contained(manifest.users_data.to_owned(), storer)
+                {
+                    if let Some(storer_index) = Self::verify_account_in_storers(
+                        manifest.users_data.to_owned(),
+                        uploader_index,
+                        storer.clone(),
+                    ) {
+                        let value_removed = manifest
+                            .users_data
+                            .get(uploader_index)
+                            .unwrap()
+                            .storers
+                            .swap_remove(storer_index);
+                        ManifestsStorerData::<T>::remove((
+                            pool_id,
+                            value_removed.clone(),
+                            CID(cid.clone()),
+                        ));
+                        removed_storer = Some(value_removed);
+                    }
+                };
             }
             Ok(())
         })?;
 
         Self::deposit_event(Event::RemoveStorerOutput {
-            uploader: uploader.clone(),
             storage: removed_storer,
             cid: cid.to_vec(),
             pool_id: pool_id.clone(),
