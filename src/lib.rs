@@ -149,6 +149,7 @@ pub mod pallet {
         AccountAlreadyStorer,
         AccountNotStorer,
         AccountNotInPool,
+        AccountNotUploader,
         ManifestAlreadyExist,
         ManifestNotFound,
         ManifestNotStored,
@@ -341,29 +342,30 @@ impl<T: Config> Pallet<T> {
         );
         Manifests::<T>::try_mutate(pool_id, CID(cid.clone()), |value| -> DispatchResult {
             if let Some(manifest) = value {
-                let index = Self::get_uploader_value(manifest.users_data);
-                let current_user_data = manifest.users_data.get(index);
-                ensure!(
-                    current_user_data.is_some(),
-                    Error::<T>::ReplicationFactorLimitReached
-                );
-                ensure!(
-                    !current_user_data.unwrap().storers.contains(&storer.clone()),
-                    Error::<T>::AccountAlreadyStorer
-                );
-                manifest
-                    .users_data
-                    .index(index)
-                    .storers
-                    .push(storer.clone());
-                ManifestsStorerData::<T>::insert(
-                    (pool_id, storer, CID(cid.clone())),
-                    ManifestStorageData {
-                        active_cycles: 0,
-                        missed_cycles: 0,
-                        active_days: 0,
-                    },
-                );
+                if let Some(index) = Self::get_uploader_value(manifest.users_data){
+                    let current_user_data = manifest.users_data.get(index);
+                    ensure!(
+                        current_user_data.is_some(),
+                        Error::<T>::ReplicationFactorLimitReached
+                    );
+                    ensure!(
+                        !current_user_data.unwrap().storers.contains(&storer.clone()),
+                        Error::<T>::AccountAlreadyStorer
+                    );
+                    manifest
+                        .users_data
+                        .index(index)
+                        .storers
+                        .push(storer.clone());
+                    ManifestsStorerData::<T>::insert(
+                        (pool_id, storer, CID(cid.clone())),
+                        ManifestStorageData {
+                            active_cycles: 0,
+                            missed_cycles: 0,
+                            active_days: 0,
+                        },
+                    );
+                }                
             }
             Ok(())
         })?;
@@ -376,11 +378,16 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    pub fn get_uploader_value(data: Vec<UploaderData<T::AccountId>>) -> usize {
+    pub fn get_uploader_value(data: Vec<UploaderData<T::AccountId>>) -> Option<usize> {
         return data
             .iter()
             .position(|x| x.replication_factor - x.storers.len() as u16 > 0)
-            .unwrap();
+    }
+
+    pub fn get_uploader_index(data: Vec<UploaderData<T::AccountId>>, account: T::AccountId) -> Option<usize> {
+        return data
+            .iter()
+            .position(|x| x.uploader == account)
     }
 
     pub fn do_remove_manifest(
@@ -392,15 +399,26 @@ impl<T: Config> Pallet<T> {
             Manifests::<T>::try_get(pool_id, CID(cid.clone())).is_ok(),
             Error::<T>::ManifestNotFound
         );
+
         Manifests::<T>::try_mutate(pool_id, CID(cid.clone()), |value| -> DispatchResult {
-            if let Some(manifest) = value {
-                for account in manifest.storage.iter() {
-                    ManifestsStorerData::<T>::remove((pool_id, account.clone(), CID(cid.clone())));
+        if let Some(manifest) = value {
+            if let Ok(uploader_index) = Self::get_uploader_index(manifest.users_data,uploader.clone()).ok_or(Error::<T>::AccountNotUploader){
+                for user_data in manifest.users_data.iter() {
+                    if user_data.uploader == uploader.clone() {
+                        for account in user_data.storers.iter(){
+                            ManifestsStorerData::<T>::remove((pool_id, account.clone(), CID(cid.clone())));
+                        }
+                    }          
                 }
-            }
-            Ok(())
+                if manifest.users_data.len() > 1 {
+                    manifest.users_data.remove(uploader_index);
+                } else {
+                    Manifests::<T>::remove(pool_id, CID(cid.clone()));
+                }
+            }  
+        }
+        Ok(())
         })?;
-        Manifests::<T>::remove(pool_id, CID(cid.clone()));
 
         Self::deposit_event(Event::ManifestRemoved {
             uploader: uploader.clone(),
