@@ -341,6 +341,7 @@ impl<T: Config> Pallet<T> {
                         .users_data
                         .index(index)
                         .storers
+                        .to_owned()
                         .push(storer.clone());
                     ManifestsStorerData::<T>::insert(
                         (pool_id, storer, CID(cid.clone())),
@@ -470,6 +471,7 @@ impl<T: Config> Pallet<T> {
                             .get(uploader_index)
                             .unwrap()
                             .storers
+                            .to_owned()
                             .swap_remove(storer_index);
                         ManifestsStorerData::<T>::remove((
                             pool_id,
