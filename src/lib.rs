@@ -364,19 +364,6 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    pub fn get_uploader_value(data: Vec<UploaderData<T::AccountId>>) -> Option<usize> {
-        return data
-            .iter()
-            .position(|x| x.replication_factor - x.storers.len() as u16 > 0);
-    }
-
-    pub fn get_uploader_index(
-        data: Vec<UploaderData<T::AccountId>>,
-        account: T::AccountId,
-    ) -> Option<usize> {
-        return data.iter().position(|x| x.uploader == account);
-    }
-
     pub fn do_remove_manifest(
         uploader: &T::AccountId,
         pool_id: PoolIdOf<T>,
@@ -420,26 +407,6 @@ impl<T: Config> Pallet<T> {
             pool_id: pool_id.clone(),
         });
         Ok(())
-    }
-
-    pub fn verify_storer_contained(
-        data: Vec<UploaderData<T::AccountId>>,
-        account: &T::AccountId,
-    ) -> Option<usize> {
-        return data.iter().position(|x| x.storers.contains(account));
-    }
-
-    pub fn verify_account_in_storers(
-        data: Vec<UploaderData<T::AccountId>>,
-        index: usize,
-        account: T::AccountId,
-    ) -> Option<usize> {
-        return data
-            .get(index)
-            .unwrap()
-            .storers
-            .iter()
-            .position(|x| *x == account.clone());
     }
 
     pub fn do_remove_storer(
@@ -491,5 +458,37 @@ impl<T: Config> Pallet<T> {
             pool_id: pool_id.clone(),
         });
         Ok(())
+    }
+
+    pub fn get_uploader_value(data: Vec<UploaderData<T::AccountId>>) -> Option<usize> {
+        return data
+            .iter()
+            .position(|x| x.replication_factor - x.storers.len() as u16 > 0);
+    }
+
+    pub fn get_uploader_index(
+        data: Vec<UploaderData<T::AccountId>>,
+        account: T::AccountId,
+    ) -> Option<usize> {
+        return data.iter().position(|x| x.uploader == account);
+    }
+    pub fn verify_storer_contained(
+        data: Vec<UploaderData<T::AccountId>>,
+        account: &T::AccountId,
+    ) -> Option<usize> {
+        return data.iter().position(|x| x.storers.contains(account));
+    }
+
+    pub fn verify_account_in_storers(
+        data: Vec<UploaderData<T::AccountId>>,
+        index: usize,
+        account: T::AccountId,
+    ) -> Option<usize> {
+        return data
+            .get(index)
+            .unwrap()
+            .storers
+            .iter()
+            .position(|x| *x == account.clone());
     }
 }
