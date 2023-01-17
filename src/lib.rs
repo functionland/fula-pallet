@@ -1,7 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use core::ops::Index;
-
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{dispatch::DispatchResult, ensure, traits::Get, BoundedVec};
 use fula_pool::PoolInterface;
@@ -327,22 +325,12 @@ impl<T: Config> Pallet<T> {
         );
         Manifests::<T>::try_mutate(pool_id, CID(cid.clone()), |value| -> DispatchResult {
             if let Some(manifest) = value {
-                if let Some(index) = Self::get_uploader_value(manifest.users_data.to_owned()) {
-                    let current_user_data = manifest.users_data.get(index);
+                if let Some(index) = Self::get_uploader_value(manifest.users_data.to_vec()) {
                     ensure!(
-                        current_user_data.is_some(),
-                        Error::<T>::ReplicationFactorLimitReached
-                    );
-                    ensure!(
-                        !current_user_data.unwrap().storers.contains(&storer.clone()),
+                        !manifest.users_data[index].storers.contains(&storer.clone()),
                         Error::<T>::AccountAlreadyStorer
                     );
-                    manifest
-                        .users_data
-                        .index(index)
-                        .storers
-                        .to_owned()
-                        .push(storer.clone());
+                    manifest.users_data[index].storers.push(storer.clone());
                     ManifestsStorerData::<T>::insert(
                         (pool_id, storer, CID(cid.clone())),
                         ManifestStorageData {
@@ -376,9 +364,8 @@ impl<T: Config> Pallet<T> {
 
         Manifests::<T>::try_mutate(pool_id, CID(cid.clone()), |value| -> DispatchResult {
             if let Some(manifest) = value {
-                if let Ok(uploader_index) =
+                if let Some(uploader_index) =
                     Self::get_uploader_index(manifest.users_data.to_owned(), uploader.clone())
-                        .ok_or(Error::<T>::AccountNotUploader)
                 {
                     for user_data in manifest.users_data.iter() {
                         if user_data.uploader == uploader.clone() {
@@ -433,13 +420,9 @@ impl<T: Config> Pallet<T> {
                         uploader_index,
                         storer.clone(),
                     ) {
-                        let value_removed = manifest
-                            .users_data
-                            .get(uploader_index)
-                            .unwrap()
+                        let value_removed = manifest.users_data[uploader_index]
                             .storers
-                            .to_owned()
-                            .swap_remove(storer_index);
+                            .remove(storer_index);
                         ManifestsStorerData::<T>::remove((
                             pool_id,
                             value_removed.clone(),
