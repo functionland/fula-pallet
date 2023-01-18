@@ -362,31 +362,25 @@ impl<T: Config> Pallet<T> {
             Error::<T>::ManifestNotFound
         );
 
-        Manifests::<T>::try_mutate(pool_id, CID(cid.clone()), |value| -> DispatchResult {
-            if let Some(manifest) = value {
-                if let Some(uploader_index) =
-                    Self::get_uploader_index(manifest.users_data.to_owned(), uploader.clone())
-                {
-                    for user_data in manifest.users_data.iter() {
-                        if user_data.uploader == uploader.clone() {
-                            for account in user_data.storers.iter() {
-                                ManifestsStorerData::<T>::remove((
-                                    pool_id,
-                                    account.clone(),
-                                    CID(cid.clone()),
-                                ));
-                            }
-                        }
+        let manifest = Self::manifests(pool_id, CID(cid.clone())).unwrap();
+
+        if let Some(index) =
+            Self::get_uploader_index(manifest.users_data.to_owned(), uploader.clone())
+        {
+            if manifest.users_data.to_owned().len() > 1 {
+                Manifests::<T>::try_mutate(pool_id, CID(cid.clone()), |value| -> DispatchResult {
+                    if let Some(manifest) = value {
+                        manifest.users_data.remove(index);
                     }
-                    if manifest.users_data.len() > 1 {
-                        manifest.users_data.remove(uploader_index);
-                    } else {
-                        Manifests::<T>::remove(pool_id, CID(cid.clone()));
-                    }
-                }
+                    Ok(())
+                })?;
+            } else {
+                Manifests::<T>::remove(pool_id, CID(cid.clone()));
             }
-            Ok(())
-        })?;
+            for account in manifest.users_data[index].storers.iter() {
+                ManifestsStorerData::<T>::remove((pool_id, account.clone(), CID(cid.clone())));
+            }
+        }
 
         Self::deposit_event(Event::ManifestRemoved {
             uploader: uploader.clone(),
