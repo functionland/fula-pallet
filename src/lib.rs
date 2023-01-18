@@ -107,7 +107,7 @@ pub mod pallet {
     pub enum Event<T: Config> {
         ManifestOutput {
             uploader: T::AccountId,
-            storage: Vec<T::AccountId>,
+            storer: Vec<T::AccountId>,
             pool_id: PoolIdOf<T>,
             manifest: Vec<u8>,
         },
@@ -117,7 +117,7 @@ pub mod pallet {
             cid: Vec<u8>,
         },
         RemoveStorerOutput {
-            storage: Option<T::AccountId>,
+            storer: Option<T::AccountId>,
             pool_id: PoolIdOf<T>,
             cid: Vec<u8>,
         },
@@ -133,6 +133,26 @@ pub mod pallet {
             active_cycles: Cycles,
             missed_cycles: Cycles,
             active_days: ActiveDays,
+        },
+        BatchManifestOutput {
+            uploader: T::AccountId,
+            pool_ids: Vec<PoolIdOf<T>>,
+            manifests: Vec<Vec<u8>>,
+        },
+        BatchStorageManifestOutput {
+            storer: T::AccountId,
+            pool_id: PoolIdOf<T>,
+            cids: Vec<Vec<u8>>,
+        },
+        BatchRemoveStorerOutput {
+            storer: T::AccountId,
+            pool_id: PoolIdOf<T>,
+            cids: Vec<Vec<u8>>,
+        },
+        BatchManifestRemoved {
+            uploader: T::AccountId,
+            pool_ids: Vec<PoolIdOf<T>>,
+            cids: Vec<Vec<u8>>,
         },
     }
 
@@ -150,6 +170,7 @@ pub mod pallet {
         ManifestAlreadyExist,
         ManifestNotFound,
         ManifestNotStored,
+        InvalidArrayLength
     }
 
     // Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -193,6 +214,19 @@ pub mod pallet {
         }
 
         #[pallet::weight(10_000)]
+        pub fn batch_upload_manifest(
+            origin: OriginFor<T>,
+            manifest: Vec<ManifestMetadataOf<T>>,
+            cids: Vec<ManifestCIDOf<T>>,
+            pool_id: Vec<PoolIdOf<T>>,
+            replication_factor: Vec<ReplicationFactor>,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+            Self::do_batch_upload_manifest(&who, pool_id, cids, manifest, replication_factor)?;
+            Ok(().into())
+        }
+
+        #[pallet::weight(10_000)]
         pub fn storage_manifest(
             origin: OriginFor<T>,
             cid: ManifestCIDOf<T>,
@@ -200,6 +234,17 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             Self::do_storage_manifest(&who, pool_id, cid)?;
+            Ok(().into())
+        }
+
+        #[pallet::weight(10_000)]
+        pub fn batch_storage_manifest(
+            origin: OriginFor<T>,
+            cids: Vec<ManifestCIDOf<T>>,
+            pool_id: PoolIdOf<T>,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+            Self::do_batch_storage_manifest(&who, pool_id, cids)?;
             Ok(().into())
         }
 
@@ -215,6 +260,17 @@ pub mod pallet {
         }
 
         #[pallet::weight(10_000)]
+        pub fn batch_remove_stored_manifest(
+            origin: OriginFor<T>,
+            cids: Vec<ManifestCIDOf<T>>,
+            pool_id: PoolIdOf<T>,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+            Self::do_batch_remove_storer(&who, pool_id, cids)?;
+            Ok(().into())
+        }
+
+        #[pallet::weight(10_000)]
         pub fn remove_manifest(
             origin: OriginFor<T>,
             cid: ManifestCIDOf<T>,
@@ -222,6 +278,17 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             Self::do_remove_manifest(&who, pool_id, cid)?;
+            Ok(().into())
+        }
+
+        #[pallet::weight(10_000)]
+        pub fn batch_remove_manifest(
+            origin: OriginFor<T>,
+            cids: Vec<ManifestCIDOf<T>>,
+            pool_ids: Vec<PoolIdOf<T>>,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+            Self::do_batch_remove_manifest(&who, pool_ids, cids)?;
             Ok(().into())
         }
     }
@@ -264,9 +331,42 @@ impl<T: Config> Pallet<T> {
 
         Self::deposit_event(Event::ManifestOutput {
             uploader: uploader.clone(),
-            storage: storers_vec.to_owned(),
+            storer: storers_vec.to_owned(),
             manifest: manifest.to_vec(),
             pool_id: pool_id.clone(),
+        });
+        Ok(())
+    }
+
+    pub fn do_batch_upload_manifest(
+        uploader: &T::AccountId,
+        pool_ids: Vec<PoolIdOf<T>>,
+        cids: Vec<ManifestCIDOf<T>>,
+        manifests: Vec<ManifestMetadataOf<T>>,
+        replication_factors: Vec<ReplicationFactor>,
+    ) -> DispatchResult {
+        ensure!(
+            cids.len() == manifests.len(),
+            Error::<T>::InvalidArrayLength
+        );
+        ensure!(
+            cids.len() == replication_factors.len(),
+            Error::<T>::InvalidArrayLength
+        );
+
+        let n = cids.len();
+        for i in 0..n {
+            let cid = cids[i].to_owned();
+            let manifest = manifests[i].to_owned();
+            let replication_factor = replication_factors[i];
+            let pool_id = pool_ids[i];
+            Self::do_upload_manifest(uploader, pool_id, cid, manifest, replication_factor)?;
+        }
+
+        Self::deposit_event(Event::BatchManifestOutput {
+            uploader: uploader.clone(),
+            manifests: Self::transform_manifest_to_vec(manifests),
+            pool_ids: pool_ids.clone(),
         });
         Ok(())
     }
@@ -352,6 +452,26 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    pub fn do_batch_storage_manifest(
+        storer: &T::AccountId,
+        pool_id: PoolIdOf<T>,
+        cids: Vec<ManifestCIDOf<T>>,
+    ) -> DispatchResult {
+
+        let n = cids.len();
+        for i in 0..n {
+            let cid = cids[i].to_owned();
+            Self::do_storage_manifest(storer, pool_id, cid)?;
+        }
+
+        Self::deposit_event(Event::BatchStorageManifestOutput {
+            storer: storer.clone(),
+            cids: Self::transform_cid_to_vec(cids),
+            pool_id: pool_id.clone(),
+        });
+        Ok(())
+    }
+
     pub fn do_remove_manifest(
         uploader: &T::AccountId,
         pool_id: PoolIdOf<T>,
@@ -386,6 +506,32 @@ impl<T: Config> Pallet<T> {
             uploader: uploader.clone(),
             cid: cid.to_vec(),
             pool_id: pool_id.clone(),
+        });
+        Ok(())
+    }
+
+    pub fn do_batch_remove_manifest(
+        uploader: &T::AccountId,
+        pool_ids: Vec<PoolIdOf<T>>,
+        cids: Vec<ManifestCIDOf<T>>,
+    ) -> DispatchResult {
+
+        ensure!(
+            cids.len() == pool_ids.len(),
+            Error::<T>::InvalidArrayLength
+        );
+
+        let n = cids.len();
+        for i in 0..n {
+            let cid = cids[i].to_owned();
+            let pool_id = pool_ids[i];
+            Self::do_remove_manifest(uploader, pool_id, cid)?;
+        }
+
+        Self::deposit_event(Event::BatchManifestRemoved {
+            uploader: uploader.clone(),
+            cids: Self::transform_cid_to_vec(cids),
+            pool_ids: pool_ids.clone(),
         });
         Ok(())
     }
@@ -430,8 +576,28 @@ impl<T: Config> Pallet<T> {
         })?;
 
         Self::deposit_event(Event::RemoveStorerOutput {
-            storage: removed_storer,
+            storer: removed_storer,
             cid: cid.to_vec(),
+            pool_id: pool_id.clone(),
+        });
+        Ok(())
+    }
+
+    pub fn do_batch_remove_storer(
+        storer: &T::AccountId,
+        pool_id: PoolIdOf<T>,
+        cids: Vec<ManifestCIDOf<T>>,
+    ) -> DispatchResult {
+
+        let n = cids.len();
+        for i in 0..n {
+            let cid = cids[i].to_owned();
+            Self::do_remove_storer(storer, pool_id, cid)?;
+        }
+
+        Self::deposit_event(Event::BatchRemoveStorerOutput {
+            storer: storer.clone(),
+            cids: Self::transform_cid_to_vec(cids),
             pool_id: pool_id.clone(),
         });
         Ok(())
@@ -468,4 +634,13 @@ impl<T: Config> Pallet<T> {
             .iter()
             .position(|x| *x == account.clone());
     }
+
+    fn transform_manifest_to_vec(in_vec: Vec<ManifestMetadataOf<T>>) -> Vec<Vec<u8>>{
+        in_vec.into_iter().map(|manifest| manifest.to_vec()).collect()
+    }
+    
+    fn transform_cid_to_vec(in_vec: Vec<ManifestCIDOf<T>>) -> Vec<Vec<u8>>{
+        in_vec.into_iter().map(|cid| cid.to_vec()).collect()
+    }
+
 }

@@ -41,13 +41,13 @@ fn update_manifest() {
 
         if let RuntimeEvent::Fula(crate::Event::ManifestOutput {
             uploader,
-            storage,
+            storer,
             manifest,
             pool_id,
         }) = last_event()
         {
             assert_eq!(uploader, 1);
-            assert_eq!(storage, vec![2]);
+            assert_eq!(storer, vec![2]);
             assert_eq!(manifest.to_vec(), hash.to_vec());
             assert_eq!(pool_id, 1);
         } else {
