@@ -3,6 +3,7 @@
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{dispatch::DispatchResult, ensure, traits::Get, BoundedVec};
 use fula_pool::PoolInterface;
+use itertools::Itertools;
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
@@ -41,9 +42,6 @@ pub struct ManifestStorageData {
     pub active_days: ActiveDays,
 }
 
-#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub struct CID<Cid>(Cid);
-
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
@@ -63,12 +61,11 @@ pub mod pallet {
     }
 
     pub type ManifestMetadataOf<T> = BoundedVec<u8, <T as Config>::MaxManifestMetadata>;
-    pub type ManifestCIDOf<T> = BoundedVec<u8, <T as Config>::MaxCID>;
+    pub type CIDOf<T> = BoundedVec<u8, <T as Config>::MaxCID>;
     pub type PoolIdOf<T> = <<T as Config>::Pool as PoolInterface>::PoolId;
     pub type ReplicationFactor = u16;
     pub type Cycles = u16;
     pub type ActiveDays = i32;
-    pub type CIDOf<T> = CID<ManifestCIDOf<T>>;
     pub type ManifestOf<T> =
         Manifest<<T as frame_system::Config>::AccountId, ManifestMetadataOf<T>>;
 
@@ -154,6 +151,11 @@ pub mod pallet {
             pool_ids: Vec<PoolIdOf<T>>,
             cids: Vec<Vec<u8>>,
         },
+        VerifiedStorerManifests {
+            storer: T::AccountId,
+            valid_cids: Vec<Vec<u8>>,
+            invalid_cids: Vec<Vec<u8>>,
+        },
     }
 
     // Errors inform users that something went wrong.
@@ -170,7 +172,7 @@ pub mod pallet {
         ManifestAlreadyExist,
         ManifestNotFound,
         ManifestNotStored,
-        InvalidArrayLength
+        InvalidArrayLength,
     }
 
     // Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -182,7 +184,7 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn update_manifest(
             origin: OriginFor<T>,
-            cid: ManifestCIDOf<T>,
+            cid: CIDOf<T>,
             pool_id: PoolIdOf<T>,
             active_cycles: Cycles,
             missed_cycles: Cycles,
@@ -204,7 +206,7 @@ pub mod pallet {
         pub fn upload_manifest(
             origin: OriginFor<T>,
             manifest: ManifestMetadataOf<T>,
-            cid: ManifestCIDOf<T>,
+            cid: CIDOf<T>,
             pool_id: PoolIdOf<T>,
             replication_factor: ReplicationFactor,
         ) -> DispatchResultWithPostInfo {
@@ -217,7 +219,7 @@ pub mod pallet {
         pub fn batch_upload_manifest(
             origin: OriginFor<T>,
             manifest: Vec<ManifestMetadataOf<T>>,
-            cids: Vec<ManifestCIDOf<T>>,
+            cids: Vec<CIDOf<T>>,
             pool_id: Vec<PoolIdOf<T>>,
             replication_factor: Vec<ReplicationFactor>,
         ) -> DispatchResultWithPostInfo {
@@ -229,7 +231,7 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn storage_manifest(
             origin: OriginFor<T>,
-            cid: ManifestCIDOf<T>,
+            cid: CIDOf<T>,
             pool_id: PoolIdOf<T>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
@@ -240,7 +242,7 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn batch_storage_manifest(
             origin: OriginFor<T>,
-            cids: Vec<ManifestCIDOf<T>>,
+            cids: Vec<CIDOf<T>>,
             pool_id: PoolIdOf<T>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
@@ -251,7 +253,7 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn remove_stored_manifest(
             origin: OriginFor<T>,
-            cid: ManifestCIDOf<T>,
+            cid: CIDOf<T>,
             pool_id: PoolIdOf<T>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
@@ -262,7 +264,7 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn batch_remove_stored_manifest(
             origin: OriginFor<T>,
-            cids: Vec<ManifestCIDOf<T>>,
+            cids: Vec<CIDOf<T>>,
             pool_id: PoolIdOf<T>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
@@ -273,7 +275,7 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn remove_manifest(
             origin: OriginFor<T>,
-            cid: ManifestCIDOf<T>,
+            cid: CIDOf<T>,
             pool_id: PoolIdOf<T>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
@@ -284,11 +286,18 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn batch_remove_manifest(
             origin: OriginFor<T>,
-            cids: Vec<ManifestCIDOf<T>>,
+            cids: Vec<CIDOf<T>>,
             pool_ids: Vec<PoolIdOf<T>>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             Self::do_batch_remove_manifest(&who, pool_ids, cids)?;
+            Ok(().into())
+        }
+
+        #[pallet::weight(10_000)]
+        pub fn verify_manifests(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+            Self::do_verify_manifests(&who)?;
             Ok(().into())
         }
     }
@@ -298,7 +307,7 @@ impl<T: Config> Pallet<T> {
     pub fn do_upload_manifest(
         uploader: &T::AccountId,
         pool_id: PoolIdOf<T>,
-        cid: ManifestCIDOf<T>,
+        cid: CIDOf<T>,
         manifest: ManifestMetadataOf<T>,
         replication_factor: ReplicationFactor,
     ) -> DispatchResult {
@@ -310,8 +319,8 @@ impl<T: Config> Pallet<T> {
             storers: storers_vec.to_owned(),
             replication_factor,
         };
-        if let Some(_manifest) = Self::manifests(pool_id, CID(cid.clone())) {
-            Manifests::<T>::try_mutate(pool_id, CID(cid.clone()), |value| -> DispatchResult {
+        if let Some(_manifest) = Self::manifests(pool_id, cid.clone()) {
+            Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
                 if let Some(manifest) = value {
                     manifest.users_data.push(uploader_data)
                 }
@@ -321,7 +330,7 @@ impl<T: Config> Pallet<T> {
             uploader_vec.push(uploader_data);
             Manifests::<T>::insert(
                 pool_id,
-                CID(cid),
+                cid,
                 Manifest {
                     users_data: uploader_vec.to_owned(),
                     manifest_metadata: manifest.clone(),
@@ -338,10 +347,47 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    pub fn do_verify_manifests(storer: &T::AccountId) -> DispatchResult {
+        let mut invalid_cids = Vec::new();
+        let mut valid_cids = Vec::new();
+        let values = ManifestsStorerData::<T>::iter().collect_vec();
+
+        for item in values.iter() {
+            if storer.clone() == item.0 .1.clone() {
+                if T::Pool::is_member(item.0 .1.clone(), item.0 .0) {
+                    if Manifests::<T>::try_get(item.0 .0, item.0 .2.clone()).is_ok() {
+                        valid_cids.push(item.0 .2.to_vec());
+                    } else {
+                        invalid_cids.push(item.0 .2.to_vec());
+                        ManifestsStorerData::<T>::remove((
+                            item.0 .0,
+                            item.0 .1.clone(),
+                            item.0 .2.clone(),
+                        ));
+                    }
+                } else {
+                    invalid_cids.push(item.0 .2.to_vec());
+                    ManifestsStorerData::<T>::remove((
+                        item.0 .0,
+                        item.0 .1.clone(),
+                        item.0 .2.clone(),
+                    ));
+                }
+            }
+        }
+
+        Self::deposit_event(Event::VerifiedStorerManifests {
+            storer: storer.clone(),
+            valid_cids: valid_cids.to_vec(),
+            invalid_cids: invalid_cids.to_vec(),
+        });
+        Ok(())
+    }
+
     pub fn do_batch_upload_manifest(
         uploader: &T::AccountId,
         pool_ids: Vec<PoolIdOf<T>>,
-        cids: Vec<ManifestCIDOf<T>>,
+        cids: Vec<CIDOf<T>>,
         manifests: Vec<ManifestMetadataOf<T>>,
         replication_factors: Vec<ReplicationFactor>,
     ) -> DispatchResult {
@@ -374,7 +420,7 @@ impl<T: Config> Pallet<T> {
     pub fn do_update_manifest(
         storer: &T::AccountId,
         pool_id: PoolIdOf<T>,
-        cid: ManifestCIDOf<T>,
+        cid: CIDOf<T>,
         active_days: ActiveDays,
         active_cycles: Cycles,
         missed_cycles: Cycles,
@@ -384,11 +430,11 @@ impl<T: Config> Pallet<T> {
             Error::<T>::AccountNotInPool
         );
         ensure!(
-            ManifestsStorerData::<T>::try_get((pool_id, storer.clone(), CID(cid.clone()))).is_ok(),
+            ManifestsStorerData::<T>::try_get((pool_id, storer.clone(), cid.clone())).is_ok(),
             Error::<T>::ManifestNotStored
         );
         ManifestsStorerData::<T>::try_mutate(
-            (pool_id, storer, CID(cid.clone())),
+            (pool_id, storer, cid.clone()),
             |value| -> DispatchResult {
                 if let Some(manifest) = value {
                     manifest.active_cycles = active_cycles;
@@ -413,17 +459,17 @@ impl<T: Config> Pallet<T> {
     pub fn do_storage_manifest(
         storer: &T::AccountId,
         pool_id: PoolIdOf<T>,
-        cid: ManifestCIDOf<T>,
+        cid: CIDOf<T>,
     ) -> DispatchResult {
         ensure!(
             T::Pool::is_member(storer.clone(), pool_id),
             Error::<T>::AccountNotInPool
         );
         ensure!(
-            Manifests::<T>::try_get(pool_id, CID(cid.clone())).is_ok(),
+            Manifests::<T>::try_get(pool_id, cid.clone()).is_ok(),
             Error::<T>::ManifestNotFound
         );
-        Manifests::<T>::try_mutate(pool_id, CID(cid.clone()), |value| -> DispatchResult {
+        Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
             if let Some(manifest) = value {
                 if let Some(index) = Self::get_uploader_value(manifest.users_data.to_vec()) {
                     ensure!(
@@ -432,7 +478,7 @@ impl<T: Config> Pallet<T> {
                     );
                     manifest.users_data[index].storers.push(storer.clone());
                     ManifestsStorerData::<T>::insert(
-                        (pool_id, storer, CID(cid.clone())),
+                        (pool_id, storer, cid.clone()),
                         ManifestStorageData {
                             active_cycles: 0,
                             missed_cycles: 0,
@@ -455,9 +501,8 @@ impl<T: Config> Pallet<T> {
     pub fn do_batch_storage_manifest(
         storer: &T::AccountId,
         pool_id: PoolIdOf<T>,
-        cids: Vec<ManifestCIDOf<T>>,
+        cids: Vec<CIDOf<T>>,
     ) -> DispatchResult {
-
         let n = cids.len();
         for i in 0..n {
             let cid = cids[i].to_owned();
@@ -475,31 +520,31 @@ impl<T: Config> Pallet<T> {
     pub fn do_remove_manifest(
         uploader: &T::AccountId,
         pool_id: PoolIdOf<T>,
-        cid: ManifestCIDOf<T>,
+        cid: CIDOf<T>,
     ) -> DispatchResult {
         ensure!(
-            Manifests::<T>::try_get(pool_id, CID(cid.clone())).is_ok(),
+            Manifests::<T>::try_get(pool_id, cid.clone()).is_ok(),
             Error::<T>::ManifestNotFound
         );
 
-        let manifest = Self::manifests(pool_id, CID(cid.clone())).unwrap();
+        let manifest = Self::manifests(pool_id, cid.clone()).unwrap();
 
         if let Some(index) =
             Self::get_uploader_index(manifest.users_data.to_owned(), uploader.clone())
         {
             if manifest.users_data.to_owned().len() > 1 {
-                Manifests::<T>::try_mutate(pool_id, CID(cid.clone()), |value| -> DispatchResult {
+                Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
                     if let Some(manifest) = value {
                         manifest.users_data.remove(index);
                     }
                     Ok(())
                 })?;
             } else {
-                Manifests::<T>::remove(pool_id, CID(cid.clone()));
+                Manifests::<T>::remove(pool_id, cid.clone());
             }
-            for account in manifest.users_data[index].storers.iter() {
-                ManifestsStorerData::<T>::remove((pool_id, account.clone(), CID(cid.clone())));
-            }
+            // for account in manifest.users_data[index].storers.iter() {
+            //     ManifestsStorerData::<T>::remove((pool_id, account.clone(), cid.clone()));
+            // }
         }
 
         Self::deposit_event(Event::ManifestRemoved {
@@ -513,13 +558,9 @@ impl<T: Config> Pallet<T> {
     pub fn do_batch_remove_manifest(
         uploader: &T::AccountId,
         pool_ids: Vec<PoolIdOf<T>>,
-        cids: Vec<ManifestCIDOf<T>>,
+        cids: Vec<CIDOf<T>>,
     ) -> DispatchResult {
-
-        ensure!(
-            cids.len() == pool_ids.len(),
-            Error::<T>::InvalidArrayLength
-        );
+        ensure!(cids.len() == pool_ids.len(), Error::<T>::InvalidArrayLength);
 
         let n = cids.len();
         for i in 0..n {
@@ -539,14 +580,14 @@ impl<T: Config> Pallet<T> {
     pub fn do_remove_storer(
         storer: &T::AccountId,
         pool_id: PoolIdOf<T>,
-        cid: ManifestCIDOf<T>,
+        cid: CIDOf<T>,
     ) -> DispatchResult {
         ensure!(
-            Manifests::<T>::try_get(pool_id, CID(cid.clone())).is_ok(),
+            Manifests::<T>::try_get(pool_id, cid.clone()).is_ok(),
             Error::<T>::ManifestNotFound
         );
         let mut removed_storer = None;
-        Manifests::<T>::try_mutate(pool_id, CID(cid.clone()), |value| -> DispatchResult {
+        Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
             if let Some(manifest) = value {
                 ensure!(
                     Self::verify_storer_contained(manifest.users_data.to_owned(), storer).is_some(),
@@ -563,11 +604,11 @@ impl<T: Config> Pallet<T> {
                         let value_removed = manifest.users_data[uploader_index]
                             .storers
                             .remove(storer_index);
-                        ManifestsStorerData::<T>::remove((
-                            pool_id,
-                            value_removed.clone(),
-                            CID(cid.clone()),
-                        ));
+                        // ManifestsStorerData::<T>::remove((
+                        //     pool_id,
+                        //     value_removed.clone(),
+                        //     CID(cid.clone()),
+                        // ));
                         removed_storer = Some(value_removed);
                     }
                 };
@@ -586,9 +627,8 @@ impl<T: Config> Pallet<T> {
     pub fn do_batch_remove_storer(
         storer: &T::AccountId,
         pool_id: PoolIdOf<T>,
-        cids: Vec<ManifestCIDOf<T>>,
+        cids: Vec<CIDOf<T>>,
     ) -> DispatchResult {
-
         let n = cids.len();
         for i in 0..n {
             let cid = cids[i].to_owned();
@@ -635,12 +675,14 @@ impl<T: Config> Pallet<T> {
             .position(|x| *x == account.clone());
     }
 
-    fn transform_manifest_to_vec(in_vec: Vec<ManifestMetadataOf<T>>) -> Vec<Vec<u8>>{
-        in_vec.into_iter().map(|manifest| manifest.to_vec()).collect()
-    }
-    
-    fn transform_cid_to_vec(in_vec: Vec<ManifestCIDOf<T>>) -> Vec<Vec<u8>>{
-        in_vec.into_iter().map(|cid| cid.to_vec()).collect()
+    fn transform_manifest_to_vec(in_vec: Vec<ManifestMetadataOf<T>>) -> Vec<Vec<u8>> {
+        in_vec
+            .into_iter()
+            .map(|manifest| manifest.to_vec())
+            .collect()
     }
 
+    fn transform_cid_to_vec(in_vec: Vec<CIDOf<T>>) -> Vec<Vec<u8>> {
+        in_vec.into_iter().map(|cid| cid.to_vec()).collect()
+    }
 }
