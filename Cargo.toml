@@ -9,7 +9,6 @@ license = "Proprietary"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-itertools = "0.10.5"
 codec = { package = "parity-scale-codec", version = "3.0.0", default-features = false, features = ["derive"] }
 scale-info = { version = "2.1.1", default-features = false, features = ["derive"] }
 frame-support = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.30", default-features = false }
@@ -23,6 +22,7 @@ fula-pool = { git = "https://github.com/MauricinhoMorales/fula-pool", branch = "
 
 [dev-dependencies]
 serde_json = "1.0"
+itertools = "0.10.5"
 
 [features]
 default = ['std']
