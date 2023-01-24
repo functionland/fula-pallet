@@ -22,7 +22,6 @@ fula-pool = { git = "https://github.com/MauricinhoMorales/fula-pool", branch = "
 
 [dev-dependencies]
 serde_json = "1.0"
-itertools = "0.10.5"
 
 [features]
 default = ['std']

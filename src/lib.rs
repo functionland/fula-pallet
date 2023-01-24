@@ -3,7 +3,6 @@
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{dispatch::DispatchResult, ensure, traits::Get, BoundedVec};
 use fula_pool::PoolInterface;
-use itertools::Itertools;
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
@@ -350,9 +349,8 @@ impl<T: Config> Pallet<T> {
     pub fn do_verify_manifests(storer: &T::AccountId) -> DispatchResult {
         let mut invalid_cids = Vec::new();
         let mut valid_cids = Vec::new();
-        let values = ManifestsStorerData::<T>::iter().collect_vec();
 
-        for item in values.iter() {
+        for item in ManifestsStorerData::<T>::iter() {
             if storer.clone() == item.0 .1.clone() {
                 if T::Pool::is_member(item.0 .1.clone(), item.0 .0) {
                     if Manifests::<T>::try_get(item.0 .0, item.0 .2.clone()).is_ok() {
