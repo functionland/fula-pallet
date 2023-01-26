@@ -22,6 +22,20 @@ mod tests;
 mod benchmarking;
 
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub struct ManifestWithPoolId<PoolId, AccountId, ManifestMetadataOf> {
+    pub pool_id: PoolId,
+    pub users_data: Vec<UploaderData<AccountId>>,
+    pub manifest_metadata: ManifestMetadataOf,
+}
+
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub struct ManifestAvailable<PoolId, ManifestMetadataOf> {
+    pub pool_id: PoolId,
+    pub replication_factor: ReplicationFactor,
+    pub manifest_metadata: ManifestMetadataOf,
+}
+
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct Manifest<AccountId, ManifestMetadataOf> {
     pub users_data: Vec<UploaderData<AccountId>>,
     pub manifest_metadata: ManifestMetadataOf,
@@ -39,6 +53,14 @@ pub struct ManifestStorageData {
     pub active_cycles: Cycles,
     pub missed_cycles: Cycles,
     pub active_days: ActiveDays,
+}
+
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub struct StorerData<PoolId, Cid, AccountId> {
+    pub pool_id: PoolId,
+    pub cid: Cid,
+    pub account: AccountId,
+    pub manifest_data: ManifestStorageData,
 }
 
 #[frame_support::pallet]
@@ -67,6 +89,14 @@ pub mod pallet {
     pub type ActiveDays = i32;
     pub type ManifestOf<T> =
         Manifest<<T as frame_system::Config>::AccountId, ManifestMetadataOf<T>>;
+    pub type ManifestWithPoolIdOf<T> = ManifestWithPoolId<
+        PoolIdOf<T>,
+        <T as frame_system::Config>::AccountId,
+        ManifestMetadataOf<T>,
+    >;
+    pub type ManifestAvailableOf<T> = ManifestAvailable<PoolIdOf<T>, ManifestMetadataOf<T>>;
+    pub type StorerDataOf<T> =
+        StorerData<PoolIdOf<T>, CIDOf<T>, <T as frame_system::Config>::AccountId>;
 
     #[pallet::pallet]
     #[pallet::without_storage_info]
@@ -154,6 +184,15 @@ pub mod pallet {
             storer: T::AccountId,
             valid_cids: Vec<Vec<u8>>,
             invalid_cids: Vec<Vec<u8>>,
+        },
+        GetManifests {
+            manifests: Vec<ManifestWithPoolIdOf<T>>,
+        },
+        GetAvailableManifests {
+            manifests: Vec<ManifestAvailableOf<T>>,
+        },
+        GetManifestsStorerData {
+            manifests: Vec<StorerDataOf<T>>,
         },
     }
 
@@ -299,6 +338,36 @@ pub mod pallet {
             Self::do_verify_manifests(&who)?;
             Ok(().into())
         }
+
+        #[pallet::weight(10_000)]
+        pub fn get_manifests(
+            _origin: OriginFor<T>,
+            pool_id: Option<PoolIdOf<T>>,
+            uploader: Option<T::AccountId>,
+            storer: Option<T::AccountId>,
+        ) -> DispatchResultWithPostInfo {
+            Self::do_get_manifests(pool_id, uploader, storer)?;
+            Ok(().into())
+        }
+
+        #[pallet::weight(10_000)]
+        pub fn get_available_manifests(
+            _origin: OriginFor<T>,
+            pool_id: Option<PoolIdOf<T>>,
+        ) -> DispatchResultWithPostInfo {
+            Self::do_get_available_manifests(pool_id)?;
+            Ok(().into())
+        }
+
+        #[pallet::weight(10_000)]
+        pub fn get_manifests_storer_data(
+            _origin: OriginFor<T>,
+            pool_id: Option<PoolIdOf<T>>,
+            storer: Option<T::AccountId>,
+        ) -> DispatchResultWithPostInfo {
+            Self::do_get_manifest_storer_data(pool_id, storer)?;
+            Ok(().into())
+        }
     }
 }
 
@@ -342,42 +411,6 @@ impl<T: Config> Pallet<T> {
             storer: storers_vec.to_owned(),
             manifest: manifest.to_vec(),
             pool_id: pool_id.clone(),
-        });
-        Ok(())
-    }
-
-    pub fn do_verify_manifests(storer: &T::AccountId) -> DispatchResult {
-        let mut invalid_cids = Vec::new();
-        let mut valid_cids = Vec::new();
-
-        for item in ManifestsStorerData::<T>::iter() {
-            if storer.clone() == item.0 .1.clone() {
-                if T::Pool::is_member(item.0 .1.clone(), item.0 .0) {
-                    if Manifests::<T>::try_get(item.0 .0, item.0 .2.clone()).is_ok() {
-                        valid_cids.push(item.0 .2.to_vec());
-                    } else {
-                        invalid_cids.push(item.0 .2.to_vec());
-                        ManifestsStorerData::<T>::remove((
-                            item.0 .0,
-                            item.0 .1.clone(),
-                            item.0 .2.clone(),
-                        ));
-                    }
-                } else {
-                    invalid_cids.push(item.0 .2.to_vec());
-                    ManifestsStorerData::<T>::remove((
-                        item.0 .0,
-                        item.0 .1.clone(),
-                        item.0 .2.clone(),
-                    ));
-                }
-            }
-        }
-
-        Self::deposit_event(Event::VerifiedStorerManifests {
-            storer: storer.clone(),
-            valid_cids: valid_cids.to_vec(),
-            invalid_cids: invalid_cids.to_vec(),
         });
         Ok(())
     }
@@ -469,7 +502,9 @@ impl<T: Config> Pallet<T> {
         );
         Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
             if let Some(manifest) = value {
-                if let Some(index) = Self::get_uploader_value(manifest.users_data.to_vec()) {
+                if let Some(index) =
+                    Self::get_next_available_uploader_index(manifest.users_data.to_vec())
+                {
                     ensure!(
                         !manifest.users_data[index].storers.contains(&storer.clone()),
                         Error::<T>::AccountAlreadyStorer
@@ -588,13 +623,13 @@ impl<T: Config> Pallet<T> {
         Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
             if let Some(manifest) = value {
                 ensure!(
-                    Self::verify_storer_contained(manifest.users_data.to_owned(), storer).is_some(),
+                    Self::verify_account_is_storer(manifest.users_data.to_owned(), storer),
                     Error::<T>::AccountNotStorer
                 );
                 if let Some(uploader_index) =
-                    Self::verify_storer_contained(manifest.users_data.to_owned(), storer)
+                    Self::get_uploader_index_given_storer(manifest.users_data.to_owned(), storer)
                 {
-                    if let Some(storer_index) = Self::verify_account_in_storers(
+                    if let Some(storer_index) = Self::get_storer_index(
                         manifest.users_data.to_owned(),
                         uploader_index,
                         storer.clone(),
@@ -641,10 +676,192 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    pub fn get_uploader_value(data: Vec<UploaderData<T::AccountId>>) -> Option<usize> {
+    pub fn do_verify_manifests(storer: &T::AccountId) -> DispatchResult {
+        let mut invalid_cids = Vec::new();
+        let mut valid_cids = Vec::new();
+
+        for item in ManifestsStorerData::<T>::iter() {
+            if storer.clone() == item.0 .1.clone() {
+                if T::Pool::is_member(item.0 .1.clone(), item.0 .0) {
+                    if Manifests::<T>::try_get(item.0 .0, item.0 .2.clone()).is_ok() {
+                        valid_cids.push(item.0 .2.to_vec());
+                    } else {
+                        invalid_cids.push(item.0 .2.to_vec());
+                        ManifestsStorerData::<T>::remove((
+                            item.0 .0,
+                            item.0 .1.clone(),
+                            item.0 .2.clone(),
+                        ));
+                    }
+                } else {
+                    invalid_cids.push(item.0 .2.to_vec());
+                    ManifestsStorerData::<T>::remove((
+                        item.0 .0,
+                        item.0 .1.clone(),
+                        item.0 .2.clone(),
+                    ));
+                }
+            }
+        }
+
+        Self::deposit_event(Event::VerifiedStorerManifests {
+            storer: storer.clone(),
+            valid_cids: valid_cids.to_vec(),
+            invalid_cids: invalid_cids.to_vec(),
+        });
+        Ok(())
+    }
+
+    pub fn do_get_manifests(
+        pool_id: Option<PoolIdOf<T>>,
+        uploader: Option<T::AccountId>,
+        storer: Option<T::AccountId>,
+    ) -> DispatchResult {
+        let mut manifests_result = Vec::new();
+
+        for item in Manifests::<T>::iter() {
+            let mut meet_requirements = true;
+
+            if let Some(pool_id_value) = pool_id {
+                if pool_id_value != item.0 {
+                    meet_requirements = false;
+                }
+            }
+
+            if let Some(ref uploader_value) = uploader {
+                if Self::verify_account_is_uploader(
+                    item.2.users_data.to_vec(),
+                    uploader_value.clone(),
+                ) {
+                    meet_requirements = false;
+                }
+            }
+
+            if let Some(ref storer_value) = storer {
+                if Self::verify_account_is_storer(item.2.users_data.to_vec(), storer_value) {
+                    meet_requirements = false;
+                }
+            }
+
+            if meet_requirements {
+                manifests_result.push(ManifestWithPoolId {
+                    pool_id: item.0,
+                    users_data: item.2.users_data,
+                    manifest_metadata: item.2.manifest_metadata,
+                });
+            }
+        }
+        Self::deposit_event(Event::GetManifests {
+            manifests: manifests_result,
+        });
+        Ok(())
+    }
+
+    pub fn do_get_available_manifests(pool_id: Option<PoolIdOf<T>>) -> DispatchResult {
+        let mut manifests_result = Vec::new();
+
+        for item in Manifests::<T>::iter() {
+            let mut meet_requirements = true;
+
+            if let Some(_) = Self::get_next_available_uploader_index(item.2.users_data.to_vec()) {
+                if let Some(pool_id_value) = pool_id {
+                    if pool_id_value != item.0 {
+                        meet_requirements = false;
+                    }
+                }
+
+                if meet_requirements {
+                    manifests_result.push(ManifestAvailable {
+                        pool_id: item.0,
+                        manifest_metadata: item.2.manifest_metadata,
+                        replication_factor: Self::get_added_replication_factor(
+                            item.2.users_data.to_vec(),
+                        ),
+                    });
+                }
+            }
+        }
+        Self::deposit_event(Event::GetAvailableManifests {
+            manifests: manifests_result,
+        });
+        Ok(())
+    }
+
+    pub fn do_get_manifest_storer_data(
+        pool_id: Option<PoolIdOf<T>>,
+        storer: Option<T::AccountId>,
+    ) -> DispatchResult {
+        let mut manifests_result = Vec::new();
+
+        for item in ManifestsStorerData::<T>::iter() {
+            let mut meet_requirements = true;
+
+            if let Some(pool_id_value) = pool_id {
+                if pool_id_value != item.0 .0 {
+                    meet_requirements = false;
+                }
+            }
+
+            if let Some(ref storer_value) = storer {
+                if storer_value.clone() != item.0 .1.clone() {
+                    meet_requirements = false;
+                }
+            }
+
+            if meet_requirements {
+                manifests_result.push(StorerData {
+                    pool_id: item.0 .0,
+                    cid: item.0 .2,
+                    account: item.0 .1.clone(),
+                    manifest_data: ManifestStorageData {
+                        active_cycles: item.1.active_cycles,
+                        missed_cycles: item.1.missed_cycles,
+                        active_days: item.1.active_days,
+                    },
+                });
+            }
+        }
+        Self::deposit_event(Event::GetManifestsStorerData {
+            manifests: manifests_result,
+        });
+        Ok(())
+    }
+
+    //  if let Some(uploader_filter) = req.storer.clone() {
+    //             if AccountId32::from(
+    //                 Public::from_str(&account_id.as_str()).map_err(map_account_err)?,
+    //             ) != AccountId32::from(
+    //                 Public::from_str(&uploader_filter.as_str()).map_err(map_account_err)?,
+    //             ) {
+    //                 meet_requirements = false;
+    //             }
+    //         }
+
+    //         if meet_requirements {
+    //             result_array.push(ManifestStorageData {
+    //                 active_cycles: manifest_value.active_cycles,
+    //                 missed_cycles: manifest_value.missed_cycles,
+    //                 active_days: manifest_value.active_days,
+    //                 pool_id: pool_id.into(),
+    //                 account: account_id,
+    //                 cid: cid_id.into(),
+    //             });
+    //         }
+
+    pub fn get_next_available_uploader_index(
+        data: Vec<UploaderData<T::AccountId>>,
+    ) -> Option<usize> {
         return data
             .iter()
             .position(|x| x.replication_factor - x.storers.len() as u16 > 0);
+    }
+
+    pub fn get_added_replication_factor(data: Vec<UploaderData<T::AccountId>>) -> u16 {
+        let mut result = 0;
+        for user_data in data {
+            result += user_data.replication_factor - user_data.storers.len() as u16;
+        }
+        return result.into();
     }
 
     pub fn get_uploader_index(
@@ -653,21 +870,37 @@ impl<T: Config> Pallet<T> {
     ) -> Option<usize> {
         return data.iter().position(|x| x.uploader == account);
     }
-    pub fn verify_storer_contained(
+
+    pub fn verify_account_is_uploader(
+        data: Vec<UploaderData<T::AccountId>>,
+        account: T::AccountId,
+    ) -> bool {
+        return data.iter().position(|x| x.uploader == account).is_some();
+    }
+
+    pub fn get_uploader_index_given_storer(
         data: Vec<UploaderData<T::AccountId>>,
         account: &T::AccountId,
     ) -> Option<usize> {
         return data.iter().position(|x| x.storers.contains(account));
     }
 
-    pub fn verify_account_in_storers(
+    pub fn verify_account_is_storer(
         data: Vec<UploaderData<T::AccountId>>,
-        index: usize,
+        account: &T::AccountId,
+    ) -> bool {
+        return data
+            .iter()
+            .position(|x| x.storers.contains(account))
+            .is_some();
+    }
+
+    pub fn get_storer_index(
+        data: Vec<UploaderData<T::AccountId>>,
+        uploader_index: usize,
         account: T::AccountId,
     ) -> Option<usize> {
-        return data
-            .get(index)
-            .unwrap()
+        return data[uploader_index]
             .storers
             .iter()
             .position(|x| *x == account.clone());
