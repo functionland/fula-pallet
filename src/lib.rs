@@ -22,6 +22,13 @@ mod tests;
 mod benchmarking;
 
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub struct ManifestWithPoolId<PoolId, AccountId, ManifestMetadataOf> {
+    pub pool_id: PoolId,
+    pub users_data: Vec<UploaderData<AccountId>>,
+    pub manifest_metadata: ManifestMetadataOf,
+}
+
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct Manifest<AccountId, ManifestMetadataOf> {
     pub users_data: Vec<UploaderData<AccountId>>,
     pub manifest_metadata: ManifestMetadataOf,
@@ -67,6 +74,11 @@ pub mod pallet {
     pub type ActiveDays = i32;
     pub type ManifestOf<T> =
         Manifest<<T as frame_system::Config>::AccountId, ManifestMetadataOf<T>>;
+    pub type ManifestWithPoolIdOf<T> = ManifestWithPoolId<
+        PoolIdOf<T>,
+        <T as frame_system::Config>::AccountId,
+        ManifestMetadataOf<T>,
+    >;
 
     #[pallet::pallet]
     #[pallet::without_storage_info]
@@ -75,7 +87,7 @@ pub mod pallet {
 
     #[pallet::storage]
     #[pallet::getter(fn manifests)]
-    pub(super) type Manifests<T: Config> = StorageDoubleMap<
+    pub(super) type ManifestsData<T: Config> = StorageDoubleMap<
         _,
         Blake2_128Concat,
         PoolIdOf<T>,
@@ -154,6 +166,9 @@ pub mod pallet {
             storer: T::AccountId,
             valid_cids: Vec<Vec<u8>>,
             invalid_cids: Vec<Vec<u8>>,
+        },
+        GetManifests {
+            manifests: Vec<ManifestWithPoolIdOf<T>>,
         },
     }
 
@@ -299,6 +314,16 @@ pub mod pallet {
             Self::do_verify_manifests(&who)?;
             Ok(().into())
         }
+
+        #[pallet::weight(10_000)]
+        pub fn get_manifests(
+            pool_id: Option<PoolIdOf<T>>,
+            uploader: Option<T::AccountId>,
+            storer: Option<T::AccountId>,
+        ) -> DispatchResultWithPostInfo {
+            Self::do_get_manifests(pool_id, uploader, storer)?;
+            Ok(().into())
+        }
     }
 }
 
@@ -342,42 +367,6 @@ impl<T: Config> Pallet<T> {
             storer: storers_vec.to_owned(),
             manifest: manifest.to_vec(),
             pool_id: pool_id.clone(),
-        });
-        Ok(())
-    }
-
-    pub fn do_verify_manifests(storer: &T::AccountId) -> DispatchResult {
-        let mut invalid_cids = Vec::new();
-        let mut valid_cids = Vec::new();
-
-        for item in ManifestsStorerData::<T>::iter() {
-            if storer.clone() == item.0 .1.clone() {
-                if T::Pool::is_member(item.0 .1.clone(), item.0 .0) {
-                    if Manifests::<T>::try_get(item.0 .0, item.0 .2.clone()).is_ok() {
-                        valid_cids.push(item.0 .2.to_vec());
-                    } else {
-                        invalid_cids.push(item.0 .2.to_vec());
-                        ManifestsStorerData::<T>::remove((
-                            item.0 .0,
-                            item.0 .1.clone(),
-                            item.0 .2.clone(),
-                        ));
-                    }
-                } else {
-                    invalid_cids.push(item.0 .2.to_vec());
-                    ManifestsStorerData::<T>::remove((
-                        item.0 .0,
-                        item.0 .1.clone(),
-                        item.0 .2.clone(),
-                    ));
-                }
-            }
-        }
-
-        Self::deposit_event(Event::VerifiedStorerManifests {
-            storer: storer.clone(),
-            valid_cids: valid_cids.to_vec(),
-            invalid_cids: invalid_cids.to_vec(),
         });
         Ok(())
     }
@@ -637,6 +626,77 @@ impl<T: Config> Pallet<T> {
             storer: storer.clone(),
             cids: Self::transform_cid_to_vec(cids),
             pool_id: pool_id.clone(),
+        });
+        Ok(())
+    }
+
+    pub fn do_verify_manifests(storer: &T::AccountId) -> DispatchResult {
+        let mut invalid_cids = Vec::new();
+        let mut valid_cids = Vec::new();
+
+        for item in ManifestsStorerData::<T>::iter() {
+            if storer.clone() == item.0 .1.clone() {
+                if T::Pool::is_member(item.0 .1.clone(), item.0 .0) {
+                    if Manifests::<T>::try_get(item.0 .0, item.0 .2.clone()).is_ok() {
+                        valid_cids.push(item.0 .2.to_vec());
+                    } else {
+                        invalid_cids.push(item.0 .2.to_vec());
+                        ManifestsStorerData::<T>::remove((
+                            item.0 .0,
+                            item.0 .1.clone(),
+                            item.0 .2.clone(),
+                        ));
+                    }
+                } else {
+                    invalid_cids.push(item.0 .2.to_vec());
+                    ManifestsStorerData::<T>::remove((
+                        item.0 .0,
+                        item.0 .1.clone(),
+                        item.0 .2.clone(),
+                    ));
+                }
+            }
+        }
+
+        Self::deposit_event(Event::VerifiedStorerManifests {
+            storer: storer.clone(),
+            valid_cids: valid_cids.to_vec(),
+            invalid_cids: invalid_cids.to_vec(),
+        });
+        Ok(())
+    }
+
+    pub fn do_get_manifests(
+        pool_id: Option<PoolIdOf<T>>,
+        uploader: Option<T::AccountId>,
+        storer: Option<T::AccountId>,
+    ) -> DispatchResult {
+        let mut manifests_result = Vec::new();
+
+        for item in Manifests::<T>::iter() {
+            let meet_requirements = true;
+            if let Some(uploader_value) = uploader {
+                if uploader_value.clone() != item.1 {
+                    meet_requirements = false;
+                }
+            }
+
+            if let Some(storer_value) = storer {
+                if storer_value.clone() != item.1 {
+                    meet_requirements = false;
+                }
+            }
+
+            if meet_requirements {
+                manifests_result.push(ManifestWithPoolId {
+                    pool_id: item.0,
+                    users_data: item.2.user_data,
+                    manifest_metadata: item.2.manifest_metadata,
+                });
+            }
+        }
+        Self::deposit_event(Event::GetManifests {
+            manifests: manifests_result,
         });
         Ok(())
     }
