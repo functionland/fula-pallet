@@ -18,7 +18,7 @@ sp-runtime = { git = "https://github.com/paritytech/substrate", branch = "polkad
 sp-io = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.30", default-features = false }
 sp-std = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.30", default-features = false }
 sp-core = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.30", default-features = false }
-fula-pool = { git = "https://github.com/MauricinhoMorales/fula-pool", branch = "feature/vote", default-features = false }
+fula-pool = { git = "https://github.com/functionland/fula-pool", branch = "main", default-features = false }
 
 [dev-dependencies]
 serde_json = "1.0"
