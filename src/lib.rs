@@ -42,6 +42,19 @@ pub struct Manifest<AccountId, ManifestMetadataOf> {
 }
 
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub enum ChallengeState {
+    Open,
+    Successful,
+    Failed,
+}
+
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub struct Challenge<AccountId> {
+    pub challenger: AccountId,
+    pub challenge_state: ChallengeState,
+}
+
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct UploaderData<AccountId> {
     pub uploader: AccountId,
     pub storers: Vec<AccountId>,
@@ -97,6 +110,7 @@ pub mod pallet {
     pub type ManifestAvailableOf<T> = ManifestAvailable<PoolIdOf<T>, ManifestMetadataOf<T>>;
     pub type StorerDataOf<T> =
         StorerData<PoolIdOf<T>, CIDOf<T>, <T as frame_system::Config>::AccountId>;
+    pub type ChallengeRequestsOf<T> = Challenge<<T as frame_system::Config>::AccountId>;
 
     #[pallet::pallet]
     #[pallet::without_storage_info]
@@ -124,6 +138,17 @@ pub mod pallet {
             NMapKey<Blake2_128Concat, CIDOf<T>>,
         ),
         ManifestStorageData,
+    >;
+
+    #[pallet::storage]
+    #[pallet::getter(fn challenges)]
+    pub(super) type ChallengeRequests<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        T::AccountId,
+        Blake2_128Concat,
+        CIDOf<T>,
+        ChallengeRequestsOf<T>,
     >;
 
     // Pallets use events to inform users when important changes are made.
@@ -194,6 +219,12 @@ pub mod pallet {
         GetManifestsStorerData {
             manifests: Vec<StorerDataOf<T>>,
         },
+        Challenge {
+            challenger: T::AccountId,
+            challenged: T::AccountId,
+            cid: Vec<u8>,
+            state: ChallengeState,
+        },
     }
 
     // Errors inform users that something went wrong.
@@ -211,6 +242,8 @@ pub mod pallet {
         ManifestNotFound,
         ManifestNotStored,
         InvalidArrayLength,
+        ErrorPickingCIDToChallenge,
+        ErrorPickingAccountToChallenge,
     }
 
     // Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -366,6 +399,23 @@ pub mod pallet {
             storer: Option<T::AccountId>,
         ) -> DispatchResultWithPostInfo {
             Self::do_get_manifest_storer_data(pool_id, storer)?;
+            Ok(().into())
+        }
+
+        #[pallet::weight(10_000)]
+        pub fn generate_challenge(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+            Self::do_generate_challenge(&who)?;
+            Ok(().into())
+        }
+
+        #[pallet::weight(10_000)]
+        pub fn verify_challenge(
+            origin: OriginFor<T>,
+            cids: Vec<CIDOf<T>>,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+            Self::do_verify_challenge(&who, cids)?;
             Ok(().into())
         }
     }
@@ -827,26 +877,59 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    //  if let Some(uploader_filter) = req.storer.clone() {
-    //             if AccountId32::from(
-    //                 Public::from_str(&account_id.as_str()).map_err(map_account_err)?,
-    //             ) != AccountId32::from(
-    //                 Public::from_str(&uploader_filter.as_str()).map_err(map_account_err)?,
-    //             ) {
-    //                 meet_requirements = false;
-    //             }
-    //         }
+    pub fn pick_random_account_cid_pair() -> (Option<T::AccountId>, Option<CIDOf<T>>) {
+        // let max_value = ManifestsStorerData::<T>::iter().count();
 
-    //         if meet_requirements {
-    //             result_array.push(ManifestStorageData {
-    //                 active_cycles: manifest_value.active_cycles,
-    //                 missed_cycles: manifest_value.missed_cycles,
-    //                 active_days: manifest_value.active_days,
-    //                 pool_id: pool_id.into(),
-    //                 account: account_id,
-    //                 cid: cid_id.into(),
-    //             });
-    //         }
+        // TO DO: Here should be the logic to make the selection of the random value from MIN 0 to - MAX the value above
+        let random_value = 0;
+
+        if let Some(item) = ManifestsStorerData::<T>::iter().nth(random_value) {
+            let account = Some(item.0 .1);
+            let cid = Some(item.0 .2);
+
+            return (account, cid);
+        } else {
+            return (None, None);
+        }
+    }
+
+
+    pub fn do_generate_challenge(challenger: &T::AccountId) -> DispatchResult {
+        let pair = Self::pick_random_account_cid_pair();
+        ensure!(pair.0.is_some(), Error::<T>::ErrorPickingAccountToChallenge);
+        ensure!(pair.1.is_some(), Error::<T>::ErrorPickingCIDToChallenge);
+
+        Self::deposit_event(Event::Challenge {
+            challenger: challenger.clone(),
+            challenged: pair.0.unwrap().clone(),
+            cid: pair.1.unwrap().to_vec(),
+            state: ChallengeState::Open,
+        });
+        Ok(())
+    }
+
+    pub fn do_verify_challenge(challenged: &T::AccountId, cids: Vec<CIDOf<T>>) -> DispatchResult {
+        for item in ChallengeRequests::<T>::iter() {
+            if item.0.clone() == challenged.clone() {
+                if cids.contains(&item.1) {
+                    Self::deposit_event(Event::Challenge {
+                        challenger: item.2.challenger,
+                        challenged: challenged.clone(),
+                        cid: item.1.to_vec(),
+                        state: ChallengeState::Successful,
+                    });
+                } else {
+                    Self::deposit_event(Event::Challenge {
+                        challenger: item.2.challenger,
+                        challenged: challenged.clone(),
+                        cid: item.1.to_vec(),
+                        state: ChallengeState::Failed,
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
 
     pub fn get_next_available_uploader_index(
         data: Vec<UploaderData<T::AccountId>>,
