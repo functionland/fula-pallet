@@ -3,6 +3,7 @@
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{dispatch::DispatchResult, ensure, traits::Get, BoundedVec};
 use fula_pool::PoolInterface;
+use rand::Rng;
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
@@ -21,6 +22,23 @@ mod tests;
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
+// Main structs for the manifests
+
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub struct Manifest<AccountId, ManifestMetadataOf> {
+    pub users_data: Vec<UploaderData<AccountId>>,
+    pub manifest_metadata: ManifestMetadataOf,
+}
+
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub struct UploaderData<AccountId> {
+    pub uploader: AccountId,
+    pub storers: Vec<AccountId>,
+    pub replication_factor: ReplicationFactor,
+}
+
+// Manifests structs for the Get calls
+
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct ManifestWithPoolId<PoolId, AccountId, ManifestMetadataOf> {
     pub pool_id: PoolId,
@@ -36,9 +54,19 @@ pub struct ManifestAvailable<PoolId, ManifestMetadataOf> {
 }
 
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub struct Manifest<AccountId, ManifestMetadataOf> {
-    pub users_data: Vec<UploaderData<AccountId>>,
-    pub manifest_metadata: ManifestMetadataOf,
+pub struct StorerData<PoolId, Cid, AccountId> {
+    pub pool_id: PoolId,
+    pub cid: Cid,
+    pub account: AccountId,
+    pub manifest_data: ManifestStorageData,
+}
+
+// Challenge Structs
+
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub struct Challenge<AccountId> {
+    pub challenger: AccountId,
+    pub challenge_state: ChallengeState,
 }
 
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
@@ -48,32 +76,14 @@ pub enum ChallengeState {
     Failed,
 }
 
-#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub struct Challenge<AccountId> {
-    pub challenger: AccountId,
-    pub challenge_state: ChallengeState,
-}
-
-#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub struct UploaderData<AccountId> {
-    pub uploader: AccountId,
-    pub storers: Vec<AccountId>,
-    pub replication_factor: ReplicationFactor,
-}
+// Manifests storer data structs
 
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct ManifestStorageData {
     pub active_cycles: Cycles,
     pub missed_cycles: Cycles,
     pub active_days: ActiveDays,
-}
-
-#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub struct StorerData<PoolId, Cid, AccountId> {
-    pub pool_id: PoolId,
-    pub cid: Cid,
-    pub account: AccountId,
-    pub manifest_data: ManifestStorageData,
+    pub challenge_state: ChallengeState,
 }
 
 #[frame_support::pallet]
@@ -138,6 +148,7 @@ pub mod pallet {
             NMapKey<Blake2_128Concat, CIDOf<T>>,
         ),
         ManifestStorageData,
+        OptionQuery,
     >;
 
     #[pallet::storage]
@@ -244,6 +255,7 @@ pub mod pallet {
         InvalidArrayLength,
         ErrorPickingCIDToChallenge,
         ErrorPickingAccountToChallenge,
+        ManifestStorerDataNotFound,
     }
 
     // Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -412,10 +424,11 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn verify_challenge(
             origin: OriginFor<T>,
+            pool_id: PoolIdOf<T>,
             cids: Vec<CIDOf<T>>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            Self::do_verify_challenge(&who, cids)?;
+            Self::do_verify_challenge(&who, cids, pool_id)?;
             Ok(().into())
         }
     }
@@ -566,6 +579,7 @@ impl<T: Config> Pallet<T> {
                             active_cycles: 0,
                             missed_cycles: 0,
                             active_days: 0,
+                            challenge_state: ChallengeState::Open,
                         },
                     );
                 }
@@ -687,11 +701,6 @@ impl<T: Config> Pallet<T> {
                         let value_removed = manifest.users_data[uploader_index]
                             .storers
                             .remove(storer_index);
-                        // ManifestsStorerData::<T>::remove((
-                        //     pool_id,
-                        //     value_removed.clone(),
-                        //     CID(cid.clone()),
-                        // ));
                         removed_storer = Some(value_removed);
                     }
                 };
@@ -867,6 +876,7 @@ impl<T: Config> Pallet<T> {
                         active_cycles: item.1.active_cycles,
                         missed_cycles: item.1.missed_cycles,
                         active_days: item.1.active_days,
+                        challenge_state: item.1.challenge_state,
                     },
                 });
             }
@@ -878,10 +888,10 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn pick_random_account_cid_pair() -> (Option<T::AccountId>, Option<CIDOf<T>>) {
-        // let max_value = ManifestsStorerData::<T>::iter().count();
+        let mut rng = rand::thread_rng();
+        let max_value = ManifestsStorerData::<T>::iter().count();
 
-        // TO DO: Here should be the logic to make the selection of the random value from MIN 0 to - MAX the value above
-        let random_value = 0;
+        let random_value = rng.gen_range(0..max_value);
 
         if let Some(item) = ManifestsStorerData::<T>::iter().nth(random_value) {
             let account = Some(item.0 .1);
@@ -892,7 +902,6 @@ impl<T: Config> Pallet<T> {
             return (None, None);
         }
     }
-
 
     pub fn do_generate_challenge(challenger: &T::AccountId) -> DispatchResult {
         let pair = Self::pick_random_account_cid_pair();
@@ -908,24 +917,39 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    pub fn do_verify_challenge(challenged: &T::AccountId, cids: Vec<CIDOf<T>>) -> DispatchResult {
+    pub fn remove_challenge(
+        who: &T::AccountId,
+        cid: CIDOf<T>,
+        pool: PoolIdOf<T>,
+        mut data: ManifestStorageData,
+        state: ChallengeState,
+    ) {
+        ChallengeRequests::<T>::remove(who, cid.clone());
+        data.challenge_state = state;
+        ManifestsStorerData::<T>::set((pool, who, cid.clone()), Some(data));
+    }
+
+    pub fn do_verify_challenge(
+        challenged: &T::AccountId,
+        cids: Vec<CIDOf<T>>,
+        pool_id: PoolIdOf<T>,
+    ) -> DispatchResult {
+        ensure!(
+            T::Pool::is_member(challenged.clone(), pool_id),
+            Error::<T>::AccountNotInPool
+        );
         for item in ChallengeRequests::<T>::iter() {
             if item.0.clone() == challenged.clone() {
+                let state;
                 if cids.contains(&item.1) {
-                    Self::deposit_event(Event::Challenge {
-                        challenger: item.2.challenger,
-                        challenged: challenged.clone(),
-                        cid: item.1.to_vec(),
-                        state: ChallengeState::Successful,
-                    });
+                    state = ChallengeState::Successful
                 } else {
-                    Self::deposit_event(Event::Challenge {
-                        challenger: item.2.challenger,
-                        challenged: challenged.clone(),
-                        cid: item.1.to_vec(),
-                        state: ChallengeState::Failed,
-                    });
+                    state = ChallengeState::Failed
                 }
+                let manifest =
+                    Self::manifests_storage_data((pool_id, challenged.clone(), item.1.clone()))
+                        .ok_or(Error::<T>::ManifestStorerDataNotFound)?;
+                Self::remove_challenge(challenged, item.1, pool_id, manifest, state);
             }
         }
         Ok(())
