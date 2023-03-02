@@ -9,6 +9,7 @@ license = "Proprietary"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+rand = "0.8.3"
 codec = { package = "parity-scale-codec", version = "3.0.0", default-features = false, features = ["derive"] }
 scale-info = { version = "2.1.1", default-features = false, features = ["derive"] }
 frame-support = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.34", default-features = false }
