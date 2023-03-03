@@ -3,7 +3,6 @@
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{dispatch::DispatchResult, ensure, traits::Get, BoundedVec};
 use fula_pool::PoolInterface;
-use rand::Rng;
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
@@ -888,10 +887,10 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn pick_random_account_cid_pair() -> (Option<T::AccountId>, Option<CIDOf<T>>) {
-        let mut rng = rand::thread_rng();
-        let max_value = ManifestsStorerData::<T>::iter().count();
+        //let mut rng = rand::thread_rng();
+        //let max_value = ManifestsStorerData::<T>::iter().count();
 
-        let random_value = rng.gen_range(0..max_value);
+        let random_value = 0; //rng.gen_range(0..max_value);
 
         if let Some(item) = ManifestsStorerData::<T>::iter().nth(random_value) {
             let account = Some(item.0 .1);
