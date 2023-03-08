@@ -3,7 +3,6 @@
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{dispatch::DispatchResult, ensure, traits::Get, BoundedVec};
 use fula_pool::PoolInterface;
-use rand::Rng;
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
@@ -28,6 +27,7 @@ mod benchmarking;
 pub struct Manifest<AccountId, ManifestMetadataOf> {
     pub users_data: Vec<UploaderData<AccountId>>,
     pub manifest_metadata: ManifestMetadataOf,
+    pub size: Option<FileSize>,
 }
 
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
@@ -107,7 +107,10 @@ pub mod pallet {
     pub type ManifestMetadataOf<T> = BoundedVec<u8, <T as Config>::MaxManifestMetadata>;
     pub type CIDOf<T> = BoundedVec<u8, <T as Config>::MaxCID>;
     pub type PoolIdOf<T> = <<T as Config>::Pool as PoolInterface>::PoolId;
+    pub type FileSize = u64;
     pub type ReplicationFactor = u16;
+    pub type ClassId = u64;
+    pub type AssetId = u64;
     pub type Cycles = u16;
     pub type ActiveDays = i32;
     pub type ManifestOf<T> =
@@ -235,6 +238,11 @@ pub mod pallet {
             challenged: T::AccountId,
             cid: Vec<u8>,
             state: ChallengeState,
+        },
+        VerifiedChallenges {
+            challenged: T::AccountId,
+            successful: Vec<Vec<u8>>,
+            failed: Vec<Vec<u8>>,
         },
     }
 
@@ -426,9 +434,11 @@ pub mod pallet {
             origin: OriginFor<T>,
             pool_id: PoolIdOf<T>,
             cids: Vec<CIDOf<T>>,
+            class_id: ClassId,
+            asset_id: AssetId,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            Self::do_verify_challenge(&who, cids, pool_id)?;
+            Self::do_verify_challenge(&who, cids, pool_id, class_id, asset_id)?;
             Ok(().into())
         }
     }
@@ -465,6 +475,7 @@ impl<T: Config> Pallet<T> {
                 Manifest {
                     users_data: uploader_vec.to_owned(),
                     manifest_metadata: manifest.clone(),
+                    size: None,
                 },
             );
         }
@@ -888,10 +899,10 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn pick_random_account_cid_pair() -> (Option<T::AccountId>, Option<CIDOf<T>>) {
-        let mut rng = rand::thread_rng();
-        let max_value = ManifestsStorerData::<T>::iter().count();
+        // let mut rng = rand::thread_rng();
+        // let max_value = ManifestsStorerData::<T>::iter().count();
 
-        let random_value = rng.gen_range(0..max_value);
+        let random_value = 0;
 
         if let Some(item) = ManifestsStorerData::<T>::iter().nth(random_value) {
             let account = Some(item.0 .1);
@@ -908,22 +919,35 @@ impl<T: Config> Pallet<T> {
         ensure!(pair.0.is_some(), Error::<T>::ErrorPickingAccountToChallenge);
         ensure!(pair.1.is_some(), Error::<T>::ErrorPickingCIDToChallenge);
 
+        ChallengeRequests::<T>::insert(
+            pair.0.clone().unwrap(),
+            pair.1.clone().unwrap(),
+            Challenge {
+                challenger: challenger.clone(),
+                challenge_state: ChallengeState::Open,
+            },
+        );
+
         Self::deposit_event(Event::Challenge {
             challenger: challenger.clone(),
-            challenged: pair.0.unwrap().clone(),
+            challenged: pair.0.unwrap(),
             cid: pair.1.unwrap().to_vec(),
             state: ChallengeState::Open,
         });
         Ok(())
     }
 
-    pub fn remove_challenge(
+    pub fn mint_challenge_tokens_and_update(
         who: &T::AccountId,
         cid: CIDOf<T>,
         pool: PoolIdOf<T>,
+        class_id: ClassId,
+        asset_id: AssetId,
         mut data: ManifestStorageData,
         state: ChallengeState,
     ) {
+        // TO DO: Here would be the call to mint the labor tokens
+
         ChallengeRequests::<T>::remove(who, cid.clone());
         data.challenge_state = state;
         ManifestsStorerData::<T>::set((pool, who, cid.clone()), Some(data));
@@ -933,25 +957,39 @@ impl<T: Config> Pallet<T> {
         challenged: &T::AccountId,
         cids: Vec<CIDOf<T>>,
         pool_id: PoolIdOf<T>,
+        class_id: ClassId,
+        asset_id: AssetId,
     ) -> DispatchResult {
         ensure!(
             T::Pool::is_member(challenged.clone(), pool_id),
             Error::<T>::AccountNotInPool
         );
+        let mut successful_cids = Vec::new();
+        let mut failed_cids = Vec::new();
+
         for item in ChallengeRequests::<T>::iter() {
             if item.0.clone() == challenged.clone() {
                 let state;
                 if cids.contains(&item.1) {
-                    state = ChallengeState::Successful
+                    state = ChallengeState::Successful;
+                    successful_cids.push(item.1.to_vec());
                 } else {
-                    state = ChallengeState::Failed
+                    state = ChallengeState::Failed;
+                    failed_cids.push(item.1.to_vec())
                 }
                 let manifest =
                     Self::manifests_storage_data((pool_id, challenged.clone(), item.1.clone()))
                         .ok_or(Error::<T>::ManifestStorerDataNotFound)?;
-                Self::remove_challenge(challenged, item.1, pool_id, manifest, state);
+                Self::mint_challenge_tokens_and_update(
+                    challenged, item.1, pool_id, class_id, asset_id, manifest, state,
+                );
             }
         }
+        Self::deposit_event(Event::VerifiedChallenges {
+            challenged: challenged.clone(),
+            successful: successful_cids,
+            failed: failed_cids,
+        });
         Ok(())
     }
 
