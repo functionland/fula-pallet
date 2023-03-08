@@ -1,5 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use std::fs::File;
+
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{dispatch::DispatchResult, ensure, traits::Get, BoundedVec};
 use fula_pool::PoolInterface;
@@ -11,6 +13,13 @@ use sp_std::prelude::*;
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
 /// <https://docs.substrate.io/v3/runtime/frame>
 pub use pallet::*;
+
+const YEARLY_TOKENS: u64 = 48000000;
+
+const DAILY_TOKENS_MINING: f64 = YEARLY_TOKENS as f64 * 0.70 / (12 * 30) as f64;
+const DAILY_TOKENS_STORAGE: f64 = YEARLY_TOKENS as f64 * 0.20 / (12 * 30) as f64;
+
+const NUMBER_CYCLES_TO_ADVANCE: u16 = 3;
 
 #[cfg(test)]
 mod mock;
@@ -84,6 +93,18 @@ pub struct ManifestStorageData {
     pub missed_cycles: Cycles,
     pub active_days: ActiveDays,
     pub challenge_state: ChallengeState,
+}
+
+pub struct Rewards {
+    pub daily_mining_rewards: f64,
+    pub daily_storage_rewards: f64,
+}
+
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub enum ChallengeStateValue {
+    Open,
+    Failed,
+    Successful,
 }
 
 #[frame_support::pallet]
@@ -224,6 +245,18 @@ pub mod pallet {
             valid_cids: Vec<Vec<u8>>,
             invalid_cids: Vec<Vec<u8>>,
         },
+        UpdateFileSizeOutput {
+            account: T::AccountId,
+            pool_id: PoolIdOf<T>,
+            cid: Vec<u8>,
+            size: u64,
+        },
+        UpdateFileSizesOutput {
+            account: T::AccountId,
+            pool_id: PoolIdOf<T>,
+            cids: Vec<Vec<u8>>,
+            sizes: Vec<u64>,
+        },
         GetManifests {
             manifests: Vec<ManifestWithPoolIdOf<T>>,
         },
@@ -264,6 +297,7 @@ pub mod pallet {
         ErrorPickingCIDToChallenge,
         ErrorPickingAccountToChallenge,
         ManifestStorerDataNotFound,
+        NoFileSizeProvided,
     }
 
     // Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -439,6 +473,30 @@ pub mod pallet {
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             Self::do_verify_challenge(&who, cids, pool_id, class_id, asset_id)?;
+            Ok(().into())
+        }
+
+        #[pallet::weight(10_000)]
+        pub fn update_file_size(
+            origin: OriginFor<T>,
+            cid: CIDOf<T>,
+            pool_id: PoolIdOf<T>,
+            size: FileSize,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+            Self::do_update_size(&who, pool_id, cid, size)?;
+            Ok(().into())
+        }
+
+        #[pallet::weight(10_000)]
+        pub fn update_file_sizes(
+            origin: OriginFor<T>,
+            cids: Vec<CIDOf<T>>,
+            pool_id: PoolIdOf<T>,
+            sizes: Vec<FileSize>,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+            Self::do_update_sizes(&who, pool_id, cids, sizes)?;
             Ok(().into())
         }
     }
@@ -993,6 +1051,66 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    pub fn do_update_size(
+        storer: &T::AccountId,
+        pool_id: PoolIdOf<T>,
+        cid: CIDOf<T>,
+        size: FileSize,
+    ) -> DispatchResult {
+        ensure!(
+            T::Pool::is_member(storer.clone(), pool_id),
+            Error::<T>::AccountNotInPool
+        );
+        ensure!(
+            Manifests::<T>::try_get(pool_id, cid.clone()).is_ok(),
+            Error::<T>::ManifestNotFound
+        );
+
+        Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
+            if let Some(manifest) = value {
+                if let Some(index) =
+                    Self::get_next_available_uploader_index(manifest.users_data.to_vec())
+                {
+                    if manifest.users_data[index].storers.contains(&storer.clone()) {
+                        manifest.size = size;
+                    }
+                }
+            }
+            Ok(())
+        })?;
+
+        Self::deposit_event(Event::UpdateFileSizeOutput {
+            account: storer.clone(),
+            pool_id: pool_id.clone(),
+            cid: cid.to_vec(),
+            size,
+        });
+
+        Ok(())
+    }
+
+    pub fn do_update_sizes(
+        storer: &T::AccountId,
+        pool_id: PoolIdOf<T>,
+        cids: Vec<CIDOf<T>>,
+        sizes: Vec<FileSize>,
+    ) -> DispatchResult {
+        let n = cids.len();
+        for i in 0..n {
+            let cid = cids[i].to_owned();
+            let size = sizes[i].to_owned();
+            Self::do_update_size(storer, pool_id, cid, size)?;
+        }
+
+        Self::deposit_event(Event::UpdateFileSizesOutput {
+            account: storer.clone(),
+            cids: Self::transform_cid_to_vec(cids),
+            pool_id: pool_id.clone(),
+            sizes: Self::transform_filesize_to_u64(sizes),
+        });
+        Ok(())
+    }
+
     pub fn get_next_available_uploader_index(
         data: Vec<UploaderData<T::AccountId>>,
     ) -> Option<usize> {
@@ -1060,5 +1178,43 @@ impl<T: Config> Pallet<T> {
 
     fn transform_cid_to_vec(in_vec: Vec<CIDOf<T>>) -> Vec<Vec<u8>> {
         in_vec.into_iter().map(|cid| cid.to_vec()).collect()
+    }
+
+    fn transform_filesize_to_u64(in_vec: Vec<FileSize>) -> Vec<u64> {
+        in_vec.into_iter().map(|size| size.unwrap()).collect()
+    }
+
+    pub async fn calculate_rewards(
+        manifests: Vec<StorerData<PoolIdOf<T>, CIDOf<T>, <T as frame_system::Config>::AccountId>>,
+        network_size: f64,
+    ) -> Rewards {
+        let mut rewards = Rewards {
+            daily_mining_rewards: 0.0,
+            daily_storage_rewards: 0.0,
+        };
+
+        for manifest in manifests.iter() {
+            let mut file_participation = 0.0;
+
+            if let Some(file_check) = Manifests::<T>::get(manifest.pool_id, manifest.cid.clone()) {
+                if let Some(file_size) = file_check.file_size {
+                    file_participation = file_size as f64 / network_size;
+                }
+            }
+            // When the active cycles reached {NUMBER_CYCLES_TO_ADVANCE} which is equal to 1 day, the manifest active days are increased and the rewards are calculated
+            if manifest.manifest_data.active_cycles >= NUMBER_CYCLES_TO_ADVANCE {
+                let active_days = manifest.manifest_data.active_days + 1;
+
+                // The calculation of the storage rewards
+                rewards.daily_storage_rewards += (1 as f64
+                    / (1 as f64 + (-0.1 * (active_days - 45) as f64).exp()))
+                    * DAILY_TOKENS_STORAGE
+                    * file_participation;
+
+                // The calculation of the mining rewards
+                rewards.daily_mining_rewards += DAILY_TOKENS_MINING as f64 * file_participation;
+            }
+        }
+        return rewards;
     }
 }
