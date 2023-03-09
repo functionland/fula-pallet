@@ -1,7 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use std::fs::File;
-
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{dispatch::DispatchResult, ensure, traits::Get, BoundedVec};
 use fula_pool::PoolInterface;
@@ -20,6 +18,7 @@ const DAILY_TOKENS_MINING: f64 = YEARLY_TOKENS as f64 * 0.70 / (12 * 30) as f64;
 const DAILY_TOKENS_STORAGE: f64 = YEARLY_TOKENS as f64 * 0.20 / (12 * 30) as f64;
 
 const NUMBER_CYCLES_TO_ADVANCE: u16 = 3;
+const NUMBER_CYCLES_TO_RESET: u16 = 3;
 
 #[cfg(test)]
 mod mock;
@@ -30,8 +29,7 @@ mod tests;
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
-// Main structs for the manifests
-
+// Manifest struct store the data related to an specific CID
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct Manifest<AccountId, ManifestMetadataOf> {
     pub users_data: Vec<UploaderData<AccountId>>,
@@ -39,6 +37,7 @@ pub struct Manifest<AccountId, ManifestMetadataOf> {
     pub size: Option<FileSize>,
 }
 
+// Struct to store the data related to the uploader of a manifest
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct UploaderData<AccountId> {
     pub uploader: AccountId,
@@ -46,8 +45,7 @@ pub struct UploaderData<AccountId> {
     pub replication_factor: ReplicationFactor,
 }
 
-// Manifests structs for the Get calls
-
+// Manifest struct for the call Get_manifests
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct ManifestWithPoolId<PoolId, AccountId, ManifestMetadataOf> {
     pub pool_id: PoolId,
@@ -55,6 +53,7 @@ pub struct ManifestWithPoolId<PoolId, AccountId, ManifestMetadataOf> {
     pub manifest_metadata: ManifestMetadataOf,
 }
 
+// Manifest struct for the call Get_available_manifests
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct ManifestAvailable<PoolId, ManifestMetadataOf> {
     pub pool_id: PoolId,
@@ -62,6 +61,7 @@ pub struct ManifestAvailable<PoolId, ManifestMetadataOf> {
     pub manifest_metadata: ManifestMetadataOf,
 }
 
+//Manifest struct for the call Get_manifest_storers_data
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct StorerData<PoolId, Cid, AccountId> {
     pub pool_id: PoolId,
@@ -70,14 +70,14 @@ pub struct StorerData<PoolId, Cid, AccountId> {
     pub manifest_data: ManifestStorageData,
 }
 
-// Challenge Structs
-
+// Challenge Struct that will store the Open challenges to verify the existence of a file in the challenged IPFS node
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct Challenge<AccountId> {
     pub challenger: AccountId,
     pub challenge_state: ChallengeState,
 }
 
+// Enum that represent the current verify state of a file on-chain if a challenge was successful / failed / open
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub enum ChallengeState {
     Open,
@@ -85,26 +85,13 @@ pub enum ChallengeState {
     Failed,
 }
 
-// Manifests storer data structs
-
+// Manifests struct to store the variables needed to the calculation of the labor_tokens of a given file
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct ManifestStorageData {
     pub active_cycles: Cycles,
     pub missed_cycles: Cycles,
     pub active_days: ActiveDays,
     pub challenge_state: ChallengeState,
-}
-
-pub struct Rewards {
-    pub daily_mining_rewards: f64,
-    pub daily_storage_rewards: f64,
-}
-
-#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-pub enum ChallengeStateValue {
-    Open,
-    Failed,
-    Successful,
 }
 
 #[frame_support::pallet]
@@ -119,12 +106,13 @@ pub mod pallet {
         /// Because this pallet emits events, it depends on the runtime's definition of an event.
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
+        // Constant values
         #[pallet::constant]
         type MaxManifestMetadata: Get<u32>;
         type MaxCID: Get<u32>;
         type Pool: PoolInterface<AccountId = Self::AccountId>;
     }
-
+    // Custom types used to handle the calls and events
     pub type ManifestMetadataOf<T> = BoundedVec<u8, <T as Config>::MaxManifestMetadata>;
     pub type CIDOf<T> = BoundedVec<u8, <T as Config>::MaxCID>;
     pub type PoolIdOf<T> = <<T as Config>::Pool as PoolInterface>::PoolId;
@@ -151,6 +139,7 @@ pub mod pallet {
     #[pallet::generate_store(pub(super) trait Store)]
     pub struct Pallet<T>(_);
 
+    // Storage to keep the manifest data - Keys: Pool_id (Pool of the file) - CID (Identifier of the file)
     #[pallet::storage]
     #[pallet::getter(fn manifests)]
     pub(super) type Manifests<T: Config> = StorageDoubleMap<
@@ -162,6 +151,7 @@ pub mod pallet {
         ManifestOf<T>,
     >;
 
+    // Storage to keep the data of the storers - Pool_id (Pool of the file) - Account (of the storer) - CID (Identifier of the file)
     #[pallet::storage]
     #[pallet::getter(fn manifests_storage_data)]
     pub(super) type ManifestsStorerData<T: Config> = StorageNMap<
@@ -175,6 +165,7 @@ pub mod pallet {
         OptionQuery,
     >;
 
+    // Storage to keep the open challenge Requests to verify the existence of a file - Keys: Account (of the user challenged) - CID (Identifier of the file)
     #[pallet::storage]
     #[pallet::getter(fn challenges)]
     pub(super) type ChallengeRequests<T: Config> = StorageDoubleMap<
@@ -186,8 +177,10 @@ pub mod pallet {
         ChallengeRequestsOf<T>,
     >;
 
-    // Pallets use events to inform users when important changes are made.
-    // https://docs.substrate.io/v3/runtime/events-and-errors
+    // A value to keep track of the Network size when a file is stored or removed
+    #[pallet::storage]
+    pub type NetworkSize<T: Config> = StorageValue<_, u64, ValueQuery>;
+
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -277,6 +270,12 @@ pub mod pallet {
             successful: Vec<Vec<u8>>,
             failed: Vec<Vec<u8>>,
         },
+        MintedLaborTokens {
+            account: T::AccountId,
+            class_id: ClassId,
+            asset_id: AssetId,
+            amount: u64,
+        },
     }
 
     // Errors inform users that something went wrong.
@@ -305,7 +304,7 @@ pub mod pallet {
     // Dispatchable functions must be annotated with a weight and must return a DispatchResult.
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// Updates fula manifest uploader to
+        /// Updates the values of the manifest storer data given the specific data
         #[pallet::weight(10_000)]
         pub fn update_manifest(
             origin: OriginFor<T>,
@@ -327,6 +326,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        // Upload a manifest to the chain
         #[pallet::weight(10_000)]
         pub fn upload_manifest(
             origin: OriginFor<T>,
@@ -340,6 +340,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        // Upload multiple manifests to the chain
         #[pallet::weight(10_000)]
         pub fn batch_upload_manifest(
             origin: OriginFor<T>,
@@ -353,6 +354,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        // Storage an available manifest from the chain
         #[pallet::weight(10_000)]
         pub fn storage_manifest(
             origin: OriginFor<T>,
@@ -364,6 +366,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        // Storage multiple manifests from the chain
         #[pallet::weight(10_000)]
         pub fn batch_storage_manifest(
             origin: OriginFor<T>,
@@ -375,6 +378,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        // A storer remove a manifest that was being stored on chain
         #[pallet::weight(10_000)]
         pub fn remove_stored_manifest(
             origin: OriginFor<T>,
@@ -386,6 +390,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        // A storer removed multiple manifests that were being stored on chain
         #[pallet::weight(10_000)]
         pub fn batch_remove_stored_manifest(
             origin: OriginFor<T>,
@@ -397,6 +402,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        // The Uploader remove the manifest from the chain
         #[pallet::weight(10_000)]
         pub fn remove_manifest(
             origin: OriginFor<T>,
@@ -408,6 +414,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        // The Uploader remove multiple manifests from the chain
         #[pallet::weight(10_000)]
         pub fn batch_remove_manifest(
             origin: OriginFor<T>,
@@ -419,6 +426,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        // A storer verifies if there are invalid manifests still stored on chain and removed them
         #[pallet::weight(10_000)]
         pub fn verify_manifests(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
@@ -426,6 +434,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        // A call to get all the manifest from the chain with possible filters
         #[pallet::weight(10_000)]
         pub fn get_manifests(
             _origin: OriginFor<T>,
@@ -437,6 +446,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        // A call to get all available manifests from the chain with possible filters
         #[pallet::weight(10_000)]
         pub fn get_available_manifests(
             _origin: OriginFor<T>,
@@ -446,6 +456,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        // A call to get all the storers data from the chain with possible filters
         #[pallet::weight(10_000)]
         pub fn get_manifests_storer_data(
             _origin: OriginFor<T>,
@@ -456,6 +467,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        // Generates a challenge to verify if a storer is still holding a random CID that he has on chain
         #[pallet::weight(10_000)]
         pub fn generate_challenge(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
@@ -463,6 +475,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        // Verifies if the challenged account has the CID that was challenged stored
         #[pallet::weight(10_000)]
         pub fn verify_challenge(
             origin: OriginFor<T>,
@@ -476,6 +489,19 @@ pub mod pallet {
             Ok(().into())
         }
 
+        // Mint the labor tokens that are going to be used to changed for claimed tokens and then for Fula Tokens - This correspond to the previously known rewards
+        #[pallet::weight(10_000)]
+        pub fn mint_labor_tokens(
+            origin: OriginFor<T>,
+            class_id: ClassId,
+            asset_id: AssetId,
+        ) -> DispatchResultWithPostInfo {
+            let who = ensure_signed(origin)?;
+            Self::do_mint_labor_tokens(&who, class_id, asset_id)?;
+            Ok(().into())
+        }
+
+        // Updates the file_size of a manifest in the chain
         #[pallet::weight(10_000)]
         pub fn update_file_size(
             origin: OriginFor<T>,
@@ -488,6 +514,7 @@ pub mod pallet {
             Ok(().into())
         }
 
+        // Updates multiple file_sizes of manifests in the chain
         #[pallet::weight(10_000)]
         pub fn update_file_sizes(
             origin: OriginFor<T>,
@@ -510,14 +537,19 @@ impl<T: Config> Pallet<T> {
         manifest: ManifestMetadataOf<T>,
         replication_factor: ReplicationFactor,
     ) -> DispatchResult {
+        // Validations made to verify some parameters given
         ensure!(replication_factor > 0, Error::<T>::ReplicationFactorInvalid);
+
+        // Auxiliar structures
         let mut uploader_vec = Vec::new();
         let storers_vec = Vec::new();
+
         let uploader_data = UploaderData {
             uploader: uploader.clone(),
             storers: storers_vec.to_owned(),
             replication_factor,
         };
+        // If the CID of the manifest already exists the  it creates another Uploader into the Vec of uploader data, if not then it creates the CID in the manifests storage
         if let Some(_manifest) = Self::manifests(pool_id, cid.clone()) {
             Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
                 if let Some(manifest) = value {
@@ -554,6 +586,7 @@ impl<T: Config> Pallet<T> {
         manifests: Vec<ManifestMetadataOf<T>>,
         replication_factors: Vec<ReplicationFactor>,
     ) -> DispatchResult {
+        // Validations made to verify some parameters given
         ensure!(
             cids.len() == manifests.len(),
             Error::<T>::InvalidArrayLength
@@ -563,6 +596,7 @@ impl<T: Config> Pallet<T> {
             Error::<T>::InvalidArrayLength
         );
 
+        // The cycle to execute multiple times the upload_manifest call
         let n = cids.len();
         for i in 0..n {
             let cid = cids[i].to_owned();
@@ -588,6 +622,7 @@ impl<T: Config> Pallet<T> {
         active_cycles: Cycles,
         missed_cycles: Cycles,
     ) -> DispatchResult {
+        // Validations made to verify some parameters given
         ensure!(
             T::Pool::is_member(storer.clone(), pool_id),
             Error::<T>::AccountNotInPool
@@ -596,6 +631,8 @@ impl<T: Config> Pallet<T> {
             ManifestsStorerData::<T>::try_get((pool_id, storer.clone(), cid.clone())).is_ok(),
             Error::<T>::ManifestNotStored
         );
+
+        // Update the values in the ManifestStorerData storage
         ManifestsStorerData::<T>::try_mutate(
             (pool_id, storer, cid.clone()),
             |value| -> DispatchResult {
@@ -624,6 +661,7 @@ impl<T: Config> Pallet<T> {
         pool_id: PoolIdOf<T>,
         cid: CIDOf<T>,
     ) -> DispatchResult {
+        // Validations made to verify some parameters given
         ensure!(
             T::Pool::is_member(storer.clone(), pool_id),
             Error::<T>::AccountNotInPool
@@ -632,8 +670,10 @@ impl<T: Config> Pallet<T> {
             Manifests::<T>::try_get(pool_id, cid.clone()).is_ok(),
             Error::<T>::ManifestNotFound
         );
+        // Add the storer to the manifest storage
         Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
             if let Some(manifest) = value {
+                // Get the next uploader that has available storers
                 if let Some(index) =
                     Self::get_next_available_uploader_index(manifest.users_data.to_vec())
                 {
@@ -642,6 +682,7 @@ impl<T: Config> Pallet<T> {
                         Error::<T>::AccountAlreadyStorer
                     );
                     manifest.users_data[index].storers.push(storer.clone());
+                    // Insert the default data to the storer data storage
                     ManifestsStorerData::<T>::insert(
                         (pool_id, storer, cid.clone()),
                         ManifestStorageData {
@@ -651,6 +692,12 @@ impl<T: Config> Pallet<T> {
                             challenge_state: ChallengeState::Open,
                         },
                     );
+                }
+                // If the manifest has the file_size available, update the network size
+                if let Some(file_size) = manifest.size {
+                    NetworkSize::<T>::mutate(|total_value| {
+                        *total_value += file_size;
+                    });
                 }
             }
             Ok(())
@@ -669,6 +716,7 @@ impl<T: Config> Pallet<T> {
         pool_id: PoolIdOf<T>,
         cids: Vec<CIDOf<T>>,
     ) -> DispatchResult {
+        // The cycle to execute multiple times the storage manifests
         let n = cids.len();
         for i in 0..n {
             let cid = cids[i].to_owned();
@@ -688,29 +736,41 @@ impl<T: Config> Pallet<T> {
         pool_id: PoolIdOf<T>,
         cid: CIDOf<T>,
     ) -> DispatchResult {
+        // Validations made to verify some parameters given
         ensure!(
             Manifests::<T>::try_get(pool_id, cid.clone()).is_ok(),
             Error::<T>::ManifestNotFound
         );
-
+        // Get the manifests and the uploaders
         let manifest = Self::manifests(pool_id, cid.clone()).unwrap();
 
+        // Found the uploader in the vector of uploader data
         if let Some(index) =
             Self::get_uploader_index(manifest.users_data.to_owned(), uploader.clone())
         {
+            // If there are more uploaders, just remove the value from the vector of uploaders, if not remove the entire manifest
             if manifest.users_data.to_owned().len() > 1 {
                 Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
                     if let Some(manifest) = value {
-                        manifest.users_data.remove(index);
+                        let value_removed = manifest.users_data.remove(index);
+                        // Update the network size, removing the size that belong to the storers before removing the uploader
+                        if let Some(file_size) = manifest.size {
+                            NetworkSize::<T>::mutate(|total_value| {
+                                *total_value -= file_size * value_removed.storers.len() as u64;
+                            });
+                        }
                     }
                     Ok(())
                 })?;
             } else {
+                // Update the network size, removing the size that belong to the storers before removing the uploader
+                if let Some(file_size) = manifest.size {
+                    NetworkSize::<T>::mutate(|total_value| {
+                        *total_value -= file_size * manifest.users_data[0].storers.len() as u64;
+                    });
+                }
                 Manifests::<T>::remove(pool_id, cid.clone());
             }
-            // for account in manifest.users_data[index].storers.iter() {
-            //     ManifestsStorerData::<T>::remove((pool_id, account.clone(), cid.clone()));
-            // }
         }
 
         Self::deposit_event(Event::ManifestRemoved {
@@ -726,8 +786,10 @@ impl<T: Config> Pallet<T> {
         pool_ids: Vec<PoolIdOf<T>>,
         cids: Vec<CIDOf<T>>,
     ) -> DispatchResult {
+        // Validations made to verify some parameters given
         ensure!(cids.len() == pool_ids.len(), Error::<T>::InvalidArrayLength);
 
+        // The cycle to execute multiple times the remove manifests
         let n = cids.len();
         for i in 0..n {
             let cid = cids[i].to_owned();
@@ -748,29 +810,44 @@ impl<T: Config> Pallet<T> {
         pool_id: PoolIdOf<T>,
         cid: CIDOf<T>,
     ) -> DispatchResult {
+        // Validations made to verify some parameters given
         ensure!(
             Manifests::<T>::try_get(pool_id, cid.clone()).is_ok(),
             Error::<T>::ManifestNotFound
         );
+
+        // Auxiliar structures
         let mut removed_storer = None;
+
+        // Try to remove the storer from the manifest storage
         Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
             if let Some(manifest) = value {
+                // Verify if the account is a storer
                 ensure!(
                     Self::verify_account_is_storer(manifest.users_data.to_owned(), storer),
                     Error::<T>::AccountNotStorer
                 );
+                // Get the uploader that correspond to the storer
                 if let Some(uploader_index) =
                     Self::get_uploader_index_given_storer(manifest.users_data.to_owned(), storer)
                 {
+                    // Get the index of the storer inside the storers vector
                     if let Some(storer_index) = Self::get_storer_index(
                         manifest.users_data.to_owned(),
                         uploader_index,
                         storer.clone(),
                     ) {
+                        // Remove the storer from the storers vector
                         let value_removed = manifest.users_data[uploader_index]
                             .storers
                             .remove(storer_index);
                         removed_storer = Some(value_removed);
+                        // Update the network size, removing the size that belong to the removed storer
+                        if let Some(file_size) = manifest.size {
+                            NetworkSize::<T>::mutate(|total_value| {
+                                *total_value -= file_size as u64;
+                            });
+                        }
                     }
                 };
             }
@@ -790,6 +867,7 @@ impl<T: Config> Pallet<T> {
         pool_id: PoolIdOf<T>,
         cids: Vec<CIDOf<T>>,
     ) -> DispatchResult {
+        // The cycle to execute multiple times the remove storers
         let n = cids.len();
         for i in 0..n {
             let cid = cids[i].to_owned();
@@ -805,16 +883,21 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn do_verify_manifests(storer: &T::AccountId) -> DispatchResult {
+        // Auxiliar structures
         let mut invalid_cids = Vec::new();
         let mut valid_cids = Vec::new();
 
+        // Verify the valid or invalid cids from the manifest storer data
         for item in ManifestsStorerData::<T>::iter() {
             if storer.clone() == item.0 .1.clone() {
+                // If the storer has manifests from another pool that is not the current it's invalid and is removed
                 if T::Pool::is_member(item.0 .1.clone(), item.0 .0) {
+                    // If the manifest is still in the manifest storage is a valid cid, if not it's invalid and is removed
                     if Manifests::<T>::try_get(item.0 .0, item.0 .2.clone()).is_ok() {
                         valid_cids.push(item.0 .2.to_vec());
                     } else {
                         invalid_cids.push(item.0 .2.to_vec());
+
                         ManifestsStorerData::<T>::remove((
                             item.0 .0,
                             item.0 .1.clone(),
@@ -845,17 +928,21 @@ impl<T: Config> Pallet<T> {
         uploader: Option<T::AccountId>,
         storer: Option<T::AccountId>,
     ) -> DispatchResult {
+        // Auxiliar structures
         let mut manifests_result = Vec::new();
 
+        // Validate the manifests that match the filters
         for item in Manifests::<T>::iter() {
             let mut meet_requirements = true;
 
+            // Checks for the pool_id
             if let Some(pool_id_value) = pool_id {
                 if pool_id_value != item.0 {
                     meet_requirements = false;
                 }
             }
 
+            // Checks for the uploader account
             if let Some(ref uploader_value) = uploader {
                 if Self::verify_account_is_uploader(
                     item.2.users_data.to_vec(),
@@ -865,12 +952,14 @@ impl<T: Config> Pallet<T> {
                 }
             }
 
+            // Checks for the storer account
             if let Some(ref storer_value) = storer {
                 if Self::verify_account_is_storer(item.2.users_data.to_vec(), storer_value) {
                     meet_requirements = false;
                 }
             }
 
+            // if everything match, add them to the vector of results
             if meet_requirements {
                 manifests_result.push(ManifestWithPoolId {
                     pool_id: item.0,
@@ -886,18 +975,23 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn do_get_available_manifests(pool_id: Option<PoolIdOf<T>>) -> DispatchResult {
+        // Auxiliar structures
         let mut manifests_result = Vec::new();
 
+        // Validate the manifests that match the filters
         for item in Manifests::<T>::iter() {
             let mut meet_requirements = true;
 
+            //Checks that there is still available storers to be added
             if let Some(_) = Self::get_next_available_uploader_index(item.2.users_data.to_vec()) {
+                //Checks for the pool_id
                 if let Some(pool_id_value) = pool_id {
                     if pool_id_value != item.0 {
                         meet_requirements = false;
                     }
                 }
 
+                // if everything match, add them to the vector of results
                 if meet_requirements {
                     manifests_result.push(ManifestAvailable {
                         pool_id: item.0,
@@ -919,23 +1013,28 @@ impl<T: Config> Pallet<T> {
         pool_id: Option<PoolIdOf<T>>,
         storer: Option<T::AccountId>,
     ) -> DispatchResult {
+        // Auxiliar structures
         let mut manifests_result = Vec::new();
 
+        // Validate the manifests storer data that match the filters
         for item in ManifestsStorerData::<T>::iter() {
             let mut meet_requirements = true;
 
+            //Checks for the pool_id
             if let Some(pool_id_value) = pool_id {
                 if pool_id_value != item.0 .0 {
                     meet_requirements = false;
                 }
             }
 
+            //Checks for the storer account
             if let Some(ref storer_value) = storer {
                 if storer_value.clone() != item.0 .1.clone() {
                     meet_requirements = false;
                 }
             }
 
+            // if everything match, add them to the vector of results
             if meet_requirements {
                 manifests_result.push(StorerData {
                     pool_id: item.0 .0,
@@ -957,11 +1056,13 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn pick_random_account_cid_pair() -> (Option<T::AccountId>, Option<CIDOf<T>>) {
-        // let mut rng = rand::thread_rng();
         // let max_value = ManifestsStorerData::<T>::iter().count();
+
+        // TO DO: Logic to make the randomness to pick a number between 0 and the max_value above
 
         let random_value = 0;
 
+        // Checks that the number selected represent a value in the storage and return the account and cid selected
         if let Some(item) = ManifestsStorerData::<T>::iter().nth(random_value) {
             let account = Some(item.0 .1);
             let cid = Some(item.0 .2);
@@ -973,10 +1074,14 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn do_generate_challenge(challenger: &T::AccountId) -> DispatchResult {
+        // Get the random pair of account - cid
         let pair = Self::pick_random_account_cid_pair();
+
+        // Validations made to verify some parameters
         ensure!(pair.0.is_some(), Error::<T>::ErrorPickingAccountToChallenge);
         ensure!(pair.1.is_some(), Error::<T>::ErrorPickingCIDToChallenge);
 
+        // Insert the value in the challenge storage as an Open State
         ChallengeRequests::<T>::insert(
             pair.0.clone().unwrap(),
             pair.1.clone().unwrap(),
@@ -995,22 +1100,6 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    pub fn mint_challenge_tokens_and_update(
-        who: &T::AccountId,
-        cid: CIDOf<T>,
-        pool: PoolIdOf<T>,
-        class_id: ClassId,
-        asset_id: AssetId,
-        mut data: ManifestStorageData,
-        state: ChallengeState,
-    ) {
-        // TO DO: Here would be the call to mint the labor tokens
-
-        ChallengeRequests::<T>::remove(who, cid.clone());
-        data.challenge_state = state;
-        ManifestsStorerData::<T>::set((pool, who, cid.clone()), Some(data));
-    }
-
     pub fn do_verify_challenge(
         challenged: &T::AccountId,
         cids: Vec<CIDOf<T>>,
@@ -1018,16 +1107,22 @@ impl<T: Config> Pallet<T> {
         class_id: ClassId,
         asset_id: AssetId,
     ) -> DispatchResult {
+        // Validations made to verify some parameters given
         ensure!(
             T::Pool::is_member(challenged.clone(), pool_id),
             Error::<T>::AccountNotInPool
         );
+
+        // Auxiliar structures
         let mut successful_cids = Vec::new();
         let mut failed_cids = Vec::new();
 
+        // Validates if the challenge is successful given the cids given and the open challenge cid
         for item in ChallengeRequests::<T>::iter() {
+            // Checks if the user is the challenged account
             if item.0.clone() == challenged.clone() {
                 let state;
+                // Verifies if the cids provided contain the cid of the challenge to determine if it's a successful or failed challenge
                 if cids.contains(&item.1) {
                     state = ChallengeState::Successful;
                     successful_cids.push(item.1.to_vec());
@@ -1035,9 +1130,11 @@ impl<T: Config> Pallet<T> {
                     state = ChallengeState::Failed;
                     failed_cids.push(item.1.to_vec())
                 }
+                //Checks that the pool_id + account  + cid exists in the manifests storer data
                 let manifest =
                     Self::manifests_storage_data((pool_id, challenged.clone(), item.1.clone()))
                         .ok_or(Error::<T>::ManifestStorerDataNotFound)?;
+                // Mint the challenge tokens corresponding to the cid file size
                 Self::mint_challenge_tokens_and_update(
                     challenged, item.1, pool_id, class_id, asset_id, manifest, state,
                 );
@@ -1051,12 +1148,125 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    pub fn mint_challenge_tokens_and_update(
+        who: &T::AccountId,
+        cid: CIDOf<T>,
+        pool: PoolIdOf<T>,
+        class_id: ClassId,
+        asset_id: AssetId,
+        mut data: ManifestStorageData,
+        state: ChallengeState,
+    ) {
+        // TO DO: Here would be the call to mint the challenge tokens
+
+        // Once the mint happens, the challenge is removed
+        ChallengeRequests::<T>::remove(who, cid.clone());
+
+        // The latest state of the cid is stored in the manifests storer data storage
+        data.challenge_state = state;
+        ManifestsStorerData::<T>::set((pool, who, cid.clone()), Some(data));
+    }
+
+    pub fn get_network_size() -> f64 {
+        // Returns the value of the network size value
+        return NetworkSize::<T>::get() as f64;
+    }
+
+    pub fn do_mint_labor_tokens(
+        account: &T::AccountId,
+        class_id: ClassId,
+        asset_id: AssetId,
+    ) -> DispatchResult {
+        // Auxiliar structures
+        let mut mining_rewards: f64 = 0.0;
+        let mut storage_rewards: f64 = 0.0;
+
+        // Iterate over the manifest storer data to update the labor tokens to be minted
+        for manifest in ManifestsStorerData::<T>::iter() {
+            let mut file_participation = 0.0;
+
+            //Checks for the account
+            if account.clone() == manifest.0 .1.clone() {
+                // Store the data to be updated later in the manifests storer data
+                let mut updated_data = ManifestStorageData {
+                    active_cycles: 0,
+                    missed_cycles: 0,
+                    active_days: 0,
+                    challenge_state: ChallengeState::Open,
+                };
+                // Checks that the manifest has the file_size available to calculate the file participation in the network
+                if let Some(file_check) = Manifests::<T>::get(manifest.0 .0, manifest.0 .2.clone())
+                {
+                    if let Some(file_size) = file_check.size {
+                        file_participation = file_size as f64 / Self::get_network_size();
+                    }
+                }
+                // If the state of the manifest is successful
+                if manifest.1.challenge_state == ChallengeState::Successful {
+                    // When the active cycles reached {NUMBER_CYCLES_TO_ADVANCE} which is equal to 1 day, the manifest active days are increased and the rewards are calculated
+                    if manifest.1.active_cycles >= NUMBER_CYCLES_TO_ADVANCE {
+                        let active_days = manifest.1.active_days + 1;
+
+                        // The calculation of the storage rewards
+                        storage_rewards += (1 as f64
+                            / (1 as f64 + (-0.1 * (active_days - 45) as f64).exp()))
+                            * DAILY_TOKENS_STORAGE
+                            * file_participation;
+
+                        // The calculation of the mining rewards
+                        mining_rewards += DAILY_TOKENS_MINING as f64 * file_participation;
+
+                        updated_data.active_days += 1;
+                        updated_data.active_cycles = 0;
+                    } else {
+                        updated_data.active_cycles += 1;
+                    }
+                } else {
+                    // If the verification of the IPFS File failed {NUMBER_CYCLES_TO_RESET} times, the active_days are reset to 0
+                    if manifest.1.missed_cycles >= NUMBER_CYCLES_TO_RESET {
+                        updated_data.missed_cycles = 0;
+                        updated_data.active_days = 0;
+                    } else {
+                        // If the times failed are lower, the missed cycles are increased
+                        updated_data.missed_cycles += 1;
+                    }
+                }
+                // Update the variables values for the next cycle
+                ManifestsStorerData::<T>::try_mutate(
+                    (manifest.0 .0, account.clone(), manifest.0 .2.clone()),
+                    |value| -> DispatchResult {
+                        if let Some(manifest) = value {
+                            manifest.active_cycles += updated_data.active_cycles;
+                            manifest.missed_cycles += updated_data.missed_cycles;
+                            manifest.active_days += updated_data.active_days;
+                        }
+                        Ok(())
+                    },
+                )?;
+            }
+        }
+
+        // Calculate the total amount of rewards for the cycle
+        let amount = mining_rewards + storage_rewards;
+
+        // TO DO: Here would be the call to mint the labor tokens
+
+        Self::deposit_event(Event::MintedLaborTokens {
+            account: account.clone(),
+            class_id,
+            asset_id,
+            amount: amount as u64,
+        });
+        Ok(())
+    }
+
     pub fn do_update_size(
         storer: &T::AccountId,
         pool_id: PoolIdOf<T>,
         cid: CIDOf<T>,
         size: FileSize,
     ) -> DispatchResult {
+        // Validations made to verify some parameters given
         ensure!(
             T::Pool::is_member(storer.clone(), pool_id),
             Error::<T>::AccountNotInPool
@@ -1066,14 +1276,19 @@ impl<T: Config> Pallet<T> {
             Error::<T>::ManifestNotFound
         );
 
+        // Updated the file_size of a manifest
         Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
             if let Some(manifest) = value {
-                if let Some(index) =
-                    Self::get_next_available_uploader_index(manifest.users_data.to_vec())
+                // Checks if there is a uploader that has the storer on chain
+                if let Some(_) =
+                    Self::get_uploader_index_given_storer(manifest.users_data.to_vec(), &storer)
                 {
-                    if manifest.users_data[index].storers.contains(&storer.clone()) {
-                        manifest.size = size;
-                    }
+                    manifest.size = Some(size);
+                    //Update the network size for the total amount of people that had that manifest before the file_size was given
+                    NetworkSize::<T>::mutate(|total_value| {
+                        *total_value +=
+                            size * Self::get_total_storers(manifest.users_data.to_vec());
+                    });
                 }
             }
             Ok(())
@@ -1095,6 +1310,7 @@ impl<T: Config> Pallet<T> {
         cids: Vec<CIDOf<T>>,
         sizes: Vec<FileSize>,
     ) -> DispatchResult {
+        // The cycle to execute multiple times the update_size for the manifests file_size
         let n = cids.len();
         for i in 0..n {
             let cid = cids[i].to_owned();
@@ -1111,6 +1327,7 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
+    // function to get the next available uploader index for when a user is going to become a storer
     pub fn get_next_available_uploader_index(
         data: Vec<UploaderData<T::AccountId>>,
     ) -> Option<usize> {
@@ -1119,6 +1336,7 @@ impl<T: Config> Pallet<T> {
             .position(|x| x.replication_factor - x.storers.len() as u16 > 0);
     }
 
+    // Get the final replication factor if there is multiple uploaders in a manifest
     pub fn get_added_replication_factor(data: Vec<UploaderData<T::AccountId>>) -> u16 {
         let mut result = 0;
         for user_data in data {
@@ -1127,6 +1345,7 @@ impl<T: Config> Pallet<T> {
         return result.into();
     }
 
+    // Get the uploader index given the uploader account
     pub fn get_uploader_index(
         data: Vec<UploaderData<T::AccountId>>,
         account: T::AccountId,
@@ -1134,6 +1353,7 @@ impl<T: Config> Pallet<T> {
         return data.iter().position(|x| x.uploader == account);
     }
 
+    // Verifies if the account given is an uploader
     pub fn verify_account_is_uploader(
         data: Vec<UploaderData<T::AccountId>>,
         account: T::AccountId,
@@ -1141,6 +1361,7 @@ impl<T: Config> Pallet<T> {
         return data.iter().position(|x| x.uploader == account).is_some();
     }
 
+    // Get the uploader index given an storer account
     pub fn get_uploader_index_given_storer(
         data: Vec<UploaderData<T::AccountId>>,
         account: &T::AccountId,
@@ -1148,6 +1369,7 @@ impl<T: Config> Pallet<T> {
         return data.iter().position(|x| x.storers.contains(account));
     }
 
+    // Verify that the account is a storer
     pub fn verify_account_is_storer(
         data: Vec<UploaderData<T::AccountId>>,
         account: &T::AccountId,
@@ -1158,6 +1380,7 @@ impl<T: Config> Pallet<T> {
             .is_some();
     }
 
+    // Get the storer index given the storer account and the uploader index
     pub fn get_storer_index(
         data: Vec<UploaderData<T::AccountId>>,
         uploader_index: usize,
@@ -1169,6 +1392,18 @@ impl<T: Config> Pallet<T> {
             .position(|x| *x == account.clone());
     }
 
+    // Get the total amount of storers given the uploaders vector
+    pub fn get_total_storers(data: Vec<UploaderData<T::AccountId>>) -> u64 {
+        let mut total_storers = 0;
+
+        for uploader in data {
+            total_storers += uploader.storers.len() as u64;
+        }
+
+        return total_storers;
+    }
+
+    // Some functions to transform some values into another inside a Vec
     fn transform_manifest_to_vec(in_vec: Vec<ManifestMetadataOf<T>>) -> Vec<Vec<u8>> {
         in_vec
             .into_iter()
@@ -1181,40 +1416,6 @@ impl<T: Config> Pallet<T> {
     }
 
     fn transform_filesize_to_u64(in_vec: Vec<FileSize>) -> Vec<u64> {
-        in_vec.into_iter().map(|size| size.unwrap()).collect()
-    }
-
-    pub async fn calculate_rewards(
-        manifests: Vec<StorerData<PoolIdOf<T>, CIDOf<T>, <T as frame_system::Config>::AccountId>>,
-        network_size: f64,
-    ) -> Rewards {
-        let mut rewards = Rewards {
-            daily_mining_rewards: 0.0,
-            daily_storage_rewards: 0.0,
-        };
-
-        for manifest in manifests.iter() {
-            let mut file_participation = 0.0;
-
-            if let Some(file_check) = Manifests::<T>::get(manifest.pool_id, manifest.cid.clone()) {
-                if let Some(file_size) = file_check.file_size {
-                    file_participation = file_size as f64 / network_size;
-                }
-            }
-            // When the active cycles reached {NUMBER_CYCLES_TO_ADVANCE} which is equal to 1 day, the manifest active days are increased and the rewards are calculated
-            if manifest.manifest_data.active_cycles >= NUMBER_CYCLES_TO_ADVANCE {
-                let active_days = manifest.manifest_data.active_days + 1;
-
-                // The calculation of the storage rewards
-                rewards.daily_storage_rewards += (1 as f64
-                    / (1 as f64 + (-0.1 * (active_days - 45) as f64).exp()))
-                    * DAILY_TOKENS_STORAGE
-                    * file_participation;
-
-                // The calculation of the mining rewards
-                rewards.daily_mining_rewards += DAILY_TOKENS_MINING as f64 * file_participation;
-            }
-        }
-        return rewards;
+        in_vec.into_iter().map(|size| size).collect()
     }
 }
