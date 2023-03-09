@@ -3,6 +3,7 @@
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::{dispatch::DispatchResult, ensure, traits::Get, BoundedVec};
 use fula_pool::PoolInterface;
+use libm::exp;
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
@@ -1209,7 +1210,7 @@ impl<T: Config> Pallet<T> {
 
                         // The calculation of the storage rewards
                         storage_rewards += (1 as f64
-                            / (1 as f64 + (-0.1 * (active_days - 45) as f64).exp()))
+                            / (1 as f64 + exp(-0.1 * (active_days - 45) as f64)))
                             * DAILY_TOKENS_STORAGE
                             * file_participation;
 
