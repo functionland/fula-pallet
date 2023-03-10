@@ -6,7 +6,7 @@ use frame_system::{self as system};
 use fula_pool::PoolInterface;
 use libm::exp;
 use scale_info::TypeInfo;
-use sp_core::blake2_256;
+use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::traits::Hash;
 use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
@@ -550,16 +550,14 @@ pub mod pallet {
             //input.extend_from_slice(&who.encode());
             input.extend_from_slice(&block_number.encode());
 
-            let hash_result = blake2_256(&input);
+            let hash_result = BlakeTwo256::hash_of(&input);
 
-            let random_number = T::Hashing::hash(&hash_result);
-
-            //let max_range = 100; //change to any desired range
-
+            let random_number = T::Hashing::hash(hash_result.as_bytes());
+            
             let result = random_number
                 .as_ref()
                 .iter()
-                .take(4) // take only the first 4 bytes
+                .take(8) // take only the first 8 bytes
                 .fold(0, |acc, &byte| (acc << 8) + byte as u32)
                 % max_range as u32;
 
