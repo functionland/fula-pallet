@@ -931,7 +931,7 @@ impl<T: Config> Pallet<T> {
         let max_value = ManifestsStorerData::<T>::iter().count();
         let random_value = <pallet::Pallet<T> as MaxRange>::random(max_value as u64);
 
-        if let Some(item) = ManifestsStorerData::<T>::iter().nth(random_value.try_into().unwrap()) {
+        if let Some(item) = ManifestsStorerData::<T>::iter().nth(random_value as usize) {
             let account = Some(item.0 .1);
             let cid = Some(item.0 .2);
 
