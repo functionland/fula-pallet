@@ -6,11 +6,22 @@ use fula_pool::PoolInterface;
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
+use frame_system::{self as system};
+use sp_std::vec::Vec;
+use sp_runtime::traits::{Hash};
+use sp_core::blake2_256;
 
 /// Edit this file to define custom logic or remove it if it is not needed.
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
 /// <https://docs.substrate.io/v3/runtime/frame>
 pub use pallet::*;
+
+pub trait MaxRange {
+    type Range;
+    fn random(max_range: Self::Range) -> u64;
+}
+
+pub type Range = u64;
 
 #[cfg(test)]
 mod mock;
@@ -84,6 +95,8 @@ pub struct ManifestStorageData {
     pub active_days: ActiveDays,
     pub challenge_state: ChallengeState,
 }
+
+    
 
 #[frame_support::pallet]
 pub mod pallet {
@@ -416,6 +429,7 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn generate_challenge(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
+            
             Self::do_generate_challenge(&who)?;
             Ok(().into())
         }
@@ -431,6 +445,33 @@ pub mod pallet {
             Ok(().into())
         }
     }
+
+    impl<T: Config> MaxRange for Pallet<T> {
+        type Range = Range;
+            fn random(max_range: Self::Range) -> u64 {
+            //let who = system::ensure_signed(origin)?;
+            let block_number = <system::Pallet<T>>::block_number();
+            
+            let mut input = Vec::new();
+            //input.extend_from_slice(&who.encode());
+            input.extend_from_slice(&block_number.encode());
+            
+            let hash_result = blake2_256(&input);
+            
+            let random_number = T::Hashing::hash(&hash_result);
+            
+            //let max_range = 100; //change to any desired range
+            
+            let result = random_number.as_ref()
+                .iter()
+                .take(4) // take only the first 4 bytes
+                .fold(0, |acc, &byte| (acc << 8) + byte as u32)
+                % max_range as u32;
+            
+            return result as u64;
+        }
+    }
+    
 }
 
 impl<T: Config> Pallet<T> {
@@ -887,12 +928,10 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn pick_random_account_cid_pair() -> (Option<T::AccountId>, Option<CIDOf<T>>) {
-        //let mut rng = rand::thread_rng();
-        //let max_value = ManifestsStorerData::<T>::iter().count();
+        let max_value = ManifestsStorerData::<T>::iter().count();
+        let random_value = <pallet::Pallet<T> as MaxRange>::random(max_value as u64);
 
-        let random_value = 0; //rng.gen_range(0..max_value);
-
-        if let Some(item) = ManifestsStorerData::<T>::iter().nth(random_value) {
+        if let Some(item) = ManifestsStorerData::<T>::iter().nth(random_value.try_into().unwrap()) {
             let account = Some(item.0 .1);
             let cid = Some(item.0 .2);
 
