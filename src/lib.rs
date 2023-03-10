@@ -62,6 +62,7 @@ pub struct ManifestWithPoolId<PoolId, AccountId, ManifestMetadataOf> {
     pub pool_id: PoolId,
     pub users_data: Vec<UploaderData<AccountId>>,
     pub manifest_metadata: ManifestMetadataOf,
+    pub size: Option<FileSize>,
 }
 
 // Manifest struct for the call Get_available_manifests
@@ -553,7 +554,7 @@ pub mod pallet {
             let hash_result = BlakeTwo256::hash_of(&input);
 
             let random_number = T::Hashing::hash(hash_result.as_bytes());
-            
+
             let result = random_number
                 .as_ref()
                 .iter()
@@ -1002,6 +1003,7 @@ impl<T: Config> Pallet<T> {
                     pool_id: item.0,
                     users_data: item.2.users_data,
                     manifest_metadata: item.2.manifest_metadata,
+                    size: item.2.size,
                 });
             }
         }
@@ -1221,12 +1223,13 @@ impl<T: Config> Pallet<T> {
             //Checks for the account
             if account.clone() == manifest.0 .1.clone() {
                 // Store the data to be updated later in the manifests storer data
-                let mut updated_data = ManifestStorageData {
-                    active_cycles: 0,
-                    missed_cycles: 0,
-                    active_days: 0,
-                    challenge_state: ChallengeState::Open,
-                };
+                let mut updated_data = ManifestsStorerData::<T>::get((
+                    manifest.0 .0,
+                    manifest.0 .1.clone(),
+                    manifest.0 .2.clone(),
+                ))
+                .unwrap();
+
                 // Checks that the manifest has the file_size available to calculate the file participation in the network
                 if let Some(file_check) = Manifests::<T>::get(manifest.0 .0, manifest.0 .2.clone())
                 {
@@ -1269,9 +1272,9 @@ impl<T: Config> Pallet<T> {
                     (manifest.0 .0, account.clone(), manifest.0 .2.clone()),
                     |value| -> DispatchResult {
                         if let Some(manifest) = value {
-                            manifest.active_cycles += updated_data.active_cycles;
-                            manifest.missed_cycles += updated_data.missed_cycles;
-                            manifest.active_days += updated_data.active_days;
+                            manifest.active_cycles = updated_data.active_cycles;
+                            manifest.missed_cycles = updated_data.missed_cycles;
+                            manifest.active_days = updated_data.active_days;
                         }
                         Ok(())
                     },
