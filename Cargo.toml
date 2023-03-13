@@ -20,6 +20,7 @@ sp-io = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0
 sp-std = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.34", default-features = false }
 sp-core = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.34", default-features = false }
 fula-pool = { git = "https://github.com/carloslopezandara/fula-pool", branch = "feature/polkadot-v0.9.34", default-features = false }
+sugarfunge-asset = { git = "https://github.com/functionland/sugarfunge-node.git", rev = "021b31477014ebf11b6affa1ba424f5b9c4b235f",  default-features = false }
 
 [dev-dependencies]
 serde_json = "1.0"

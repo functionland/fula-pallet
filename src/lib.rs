@@ -11,6 +11,7 @@ use sp_runtime::traits::Hash;
 use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
 use sp_std::vec::Vec;
+use sugarfunge_asset::InterfacePallet;
 
 /// Edit this file to define custom logic or remove it if it is not needed.
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
@@ -123,6 +124,12 @@ pub mod pallet {
         type MaxManifestMetadata: Get<u32>;
         type MaxCID: Get<u32>;
         type Pool: PoolInterface<AccountId = Self::AccountId>;
+        type Asset: InterfacePallet<
+            AccountId = Self::AccountId,
+            ClassId = u64,
+            AssetId = u64,
+            MintedBalance = u128,
+        >;
     }
     // Custom types used to handle the calls and events
     pub type ManifestMetadataOf<T> = BoundedVec<u8, <T as Config>::MaxManifestMetadata>;
@@ -1192,7 +1199,15 @@ impl<T: Config> Pallet<T> {
         mut data: ManifestStorageData,
         state: ChallengeState,
     ) {
-        // TO DO: Here would be the call to mint the challenge tokens
+        let mut amount = 0;
+        if let Some(file_check) = Manifests::<T>::get(pool, cid.clone()) {
+            if let Some(file_size) = file_check.size {
+                amount = file_size * 10;
+            } else {
+                amount = 10;
+            }
+        }
+        let _value = T::Asset::mint_labor_tokens(who.clone(), who.clone(), class_id, asset_id, amount as u128);
 
         // Once the mint happens, the challenge is removed
         ChallengeRequests::<T>::remove(who, cid.clone());
@@ -1286,6 +1301,8 @@ impl<T: Config> Pallet<T> {
         let amount = mining_rewards + storage_rewards;
 
         // TO DO: Here would be the call to mint the labor tokens
+        let _value =
+            T::Asset::mint_labor_tokens(account.clone(), account.clone(), class_id, asset_id, amount as u128);
 
         Self::deposit_event(Event::MintedLaborTokens {
             account: account.clone(),
