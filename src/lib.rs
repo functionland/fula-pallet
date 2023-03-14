@@ -1207,7 +1207,13 @@ impl<T: Config> Pallet<T> {
                 amount = 10;
             }
         }
-        let _value = T::Asset::mint_labor_tokens(who.clone(), who.clone(), class_id, asset_id, amount as u128);
+        let _value = T::Asset::mint_labor_tokens(
+            who.clone(),
+            who.clone(),
+            class_id,
+            asset_id,
+            amount as u128,
+        );
 
         // Once the mint happens, the challenge is removed
         ChallengeRequests::<T>::remove(who, cid.clone());
@@ -1301,8 +1307,13 @@ impl<T: Config> Pallet<T> {
         let amount = mining_rewards + storage_rewards;
 
         // TO DO: Here would be the call to mint the labor tokens
-        let _value =
-            T::Asset::mint_labor_tokens(account.clone(), account.clone(), class_id, asset_id, amount as u128);
+        let _value = T::Asset::mint_labor_tokens(
+            account.clone(),
+            account.clone(),
+            class_id,
+            asset_id,
+            amount as u128,
+        );
 
         Self::deposit_event(Event::MintedLaborTokens {
             account: account.clone(),
