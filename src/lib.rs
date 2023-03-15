@@ -1101,18 +1101,28 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    pub fn pick_random_account_cid_pair() -> (Option<T::AccountId>, Option<CIDOf<T>>) {
-        let max_value = ManifestsStorerData::<T>::iter().count();
-        let random_value = <pallet::Pallet<T> as MaxRange>::random(max_value as u64);
+    pub fn pick_random_account_cid_pair(
+        challenger: &T::AccountId,
+    ) -> (Option<T::AccountId>, Option<CIDOf<T>>) {
+        let mut account = challenger.clone();
 
-        if let Some(item) = ManifestsStorerData::<T>::iter().nth(random_value as usize) {
-            let account = Some(item.0 .1);
-            let cid = Some(item.0 .2);
+        while account == challenger.clone() {
+            let max_value = ManifestsStorerData::<T>::iter().count();
+            let random_value = <pallet::Pallet<T> as MaxRange>::random(max_value as u64);
 
-            return (account, cid);
-        } else {
-            return (None, None);
+            if let Some(item) = ManifestsStorerData::<T>::iter().nth(random_value as usize) {
+                account = item.0 .1;
+                let cid = Some(item.0 .2);
+
+                if account != challenger.clone() {
+                    return (Some(account), cid);
+                }
+            } else {
+                return (None, None);
+            }
         }
+
+        return (None, None);
     }
 
     pub fn accounts_to_challenge(account: T::AccountId) -> bool {
@@ -1124,7 +1134,7 @@ impl<T: Config> Pallet<T> {
         ensure!(Self::accounts_to_challenge(challenger.clone()), Error::<T>::NoAccountsToChallenge);
         // Get the random pair of account - cid
 
-        let pair = Self::pick_random_account_cid_pair();
+        let pair = Self::pick_random_account_cid_pair(challenger);
 
         // Validations made to verify some parameters
         ensure!(pair.0.is_some(), Error::<T>::ErrorPickingAccountToChallenge);
