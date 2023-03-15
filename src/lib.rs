@@ -309,6 +309,7 @@ pub mod pallet {
         ErrorPickingAccountToChallenge,
         ManifestStorerDataNotFound,
         NoFileSizeProvided,
+        NoAccountsToChallenge,
     }
 
     // Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -879,7 +880,13 @@ impl<T: Config> Pallet<T> {
                         let value_removed = manifest.users_data[uploader_index]
                             .storers
                             .remove(storer_index);
-                        removed_storer = Some(value_removed);
+                        removed_storer = Some(value_removed.clone());
+                        // Remove the ManifestStorerData
+                        ManifestsStorerData::<T>::remove((
+                            pool_id,
+                            value_removed.clone(),
+                            cid.clone(),
+                        ));
                         // Update the network size, removing the size that belong to the removed storer
                         if let Some(file_size) = manifest.size {
                             NetworkSize::<T>::mutate(|total_value| {
@@ -1108,8 +1115,15 @@ impl<T: Config> Pallet<T> {
         }
     }
 
-    pub fn do_generate_challenge(challenger: &T::AccountId) -> DispatchResult {
+    pub fn accounts_to_challenge(account: T::AccountId) -> bool {
+        let result = ManifestsStorerData::<T>::iter().any(|manifest| manifest.0.1 != account);
+        result
+    }
+
+    pub fn do_generate_challenge(challenger: &T::AccountId) -> DispatchResult {        
+        ensure!(Self::accounts_to_challenge(challenger.clone()), Error::<T>::NoAccountsToChallenge);
         // Get the random pair of account - cid
+
         let pair = Self::pick_random_account_cid_pair();
 
         // Validations made to verify some parameters
