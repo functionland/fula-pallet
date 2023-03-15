@@ -125,10 +125,10 @@ pub mod pallet {
         type MaxCID: Get<u32>;
         type Pool: PoolInterface<AccountId = Self::AccountId>;
         type Asset: InterfacePallet<
-            AccountId = Self::AccountId,
-            ClassId = u64,
-            AssetId = u64,
-            MintedBalance = u128,
+            Self::AccountId,
+            u64,
+            u64,
+            u128,
         >;
     }
     // Custom types used to handle the calls and events
@@ -1101,23 +1101,33 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    pub fn pick_random_account_cid_pair() -> (Option<T::AccountId>, Option<CIDOf<T>>) {
-        let max_value = ManifestsStorerData::<T>::iter().count();
-        let random_value = <pallet::Pallet<T> as MaxRange>::random(max_value as u64);
+    pub fn pick_random_account_cid_pair(
+        challenger: &T::AccountId,
+    ) -> (Option<T::AccountId>, Option<CIDOf<T>>) {
+        let mut account = challenger.clone();
 
-        if let Some(item) = ManifestsStorerData::<T>::iter().nth(random_value as usize) {
-            let account = Some(item.0 .1);
-            let cid = Some(item.0 .2);
+        while account == challenger.clone() {
+            let max_value = ManifestsStorerData::<T>::iter().count();
+            let random_value = <pallet::Pallet<T> as MaxRange>::random(max_value as u64);
 
-            return (account, cid);
-        } else {
-            return (None, None);
+            if let Some(item) = ManifestsStorerData::<T>::iter().nth(random_value as usize) {
+                account = item.0 .1;
+                let cid = Some(item.0 .2);
+
+                if account != challenger.clone() {
+                    return (Some(account), cid);
+                }
+            } else {
+                return (None, None);
+            }
         }
+
+        return (None, None);
     }
 
     pub fn do_generate_challenge(challenger: &T::AccountId) -> DispatchResult {
         // Get the random pair of account - cid
-        let pair = Self::pick_random_account_cid_pair();
+        let pair = Self::pick_random_account_cid_pair(challenger);
 
         // Validations made to verify some parameters
         ensure!(pair.0.is_some(), Error::<T>::ErrorPickingAccountToChallenge);
