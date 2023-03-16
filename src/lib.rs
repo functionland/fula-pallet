@@ -124,21 +124,17 @@ pub mod pallet {
         type MaxManifestMetadata: Get<u32>;
         type MaxCID: Get<u32>;
         type Pool: PoolInterface<AccountId = Self::AccountId>;
-        type Asset: InterfacePallet<
-            Self::AccountId,
-            u64,
-            u64,
-            u128,
-        >;
+        type Asset: InterfacePallet<AccountId = Self::AccountId>;
     }
     // Custom types used to handle the calls and events
     pub type ManifestMetadataOf<T> = BoundedVec<u8, <T as Config>::MaxManifestMetadata>;
     pub type CIDOf<T> = BoundedVec<u8, <T as Config>::MaxCID>;
     pub type PoolIdOf<T> = <<T as Config>::Pool as PoolInterface>::PoolId;
+    pub type ClassIdOf<T> = <<T as Config>::Asset as InterfacePallet>::ClassId;
+    pub type AssetIdOf<T> = <<T as Config>::Asset as InterfacePallet>::AssetId;
+    pub type MintBalanceOf<T> = <<T as Config>::Asset as InterfacePallet>::MintBalance;
     pub type FileSize = u64;
     pub type ReplicationFactor = u16;
-    pub type ClassId = u64;
-    pub type AssetId = u64;
     pub type Cycles = u16;
     pub type ActiveDays = i32;
     pub type ManifestOf<T> =
@@ -291,9 +287,10 @@ pub mod pallet {
         },
         MintedLaborTokens {
             account: T::AccountId,
-            class_id: ClassId,
-            asset_id: AssetId,
-            amount: u64,
+            class_id: ClassIdOf<T>,
+            asset_id: AssetIdOf<T>,
+            amount: MintBalanceOf<T>,
+            calculated_amount: u64,
         },
     }
 
@@ -501,8 +498,8 @@ pub mod pallet {
             origin: OriginFor<T>,
             pool_id: PoolIdOf<T>,
             cids: Vec<CIDOf<T>>,
-            class_id: ClassId,
-            asset_id: AssetId,
+            class_id: ClassIdOf<T>,
+            asset_id: AssetIdOf<T>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             Self::do_verify_challenge(&who, cids, pool_id, class_id, asset_id)?;
@@ -513,11 +510,12 @@ pub mod pallet {
         #[pallet::weight(10_000)]
         pub fn mint_labor_tokens(
             origin: OriginFor<T>,
-            class_id: ClassId,
-            asset_id: AssetId,
+            class_id: ClassIdOf<T>,
+            asset_id: AssetIdOf<T>,
+            amount: MintBalanceOf<T>,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            Self::do_mint_labor_tokens(&who, class_id, asset_id)?;
+            Self::do_mint_labor_tokens(&who, class_id, asset_id, amount)?;
             Ok(().into())
         }
 
@@ -1156,8 +1154,8 @@ impl<T: Config> Pallet<T> {
         challenged: &T::AccountId,
         cids: Vec<CIDOf<T>>,
         pool_id: PoolIdOf<T>,
-        class_id: ClassId,
-        asset_id: AssetId,
+        class_id: ClassIdOf<T>,
+        asset_id: AssetIdOf<T>,
     ) -> DispatchResult {
         // Validations made to verify some parameters given
         ensure!(
@@ -1204,26 +1202,26 @@ impl<T: Config> Pallet<T> {
         who: &T::AccountId,
         cid: CIDOf<T>,
         pool: PoolIdOf<T>,
-        class_id: ClassId,
-        asset_id: AssetId,
+        class_id: ClassIdOf<T>,
+        asset_id: AssetIdOf<T>,
         mut data: ManifestStorageData,
         state: ChallengeState,
     ) {
-        let mut amount = 0;
-        if let Some(file_check) = Manifests::<T>::get(pool, cid.clone()) {
-            if let Some(file_size) = file_check.size {
-                amount = file_size * 10;
-            } else {
-                amount = 10;
-            }
-        }
-        let _value = T::Asset::mint_labor_tokens(
-            who.clone(),
-            who.clone(),
-            class_id,
-            asset_id,
-            amount as u128,
-        );
+        // let mut amount = 0;
+        // if let Some(file_check) = Manifests::<T>::get(pool, cid.clone()) {
+        //     if let Some(file_size) = file_check.size {
+        //         amount = file_size * 10;
+        //     } else {
+        //         amount = 10;
+        //     }
+        // }
+        // let _value = T::Asset::mint_tokens(
+        //     who.clone(),
+        //     who.clone(),
+        //     class_id,
+        //     asset_id,
+        //     amount,
+        // );
 
         // Once the mint happens, the challenge is removed
         ChallengeRequests::<T>::remove(who, cid.clone());
@@ -1240,8 +1238,9 @@ impl<T: Config> Pallet<T> {
 
     pub fn do_mint_labor_tokens(
         account: &T::AccountId,
-        class_id: ClassId,
-        asset_id: AssetId,
+        class_id: ClassIdOf<T>,
+        asset_id: AssetIdOf<T>,
+        amount: MintBalanceOf<T>,
     ) -> DispatchResult {
         // Auxiliar structures
         let mut mining_rewards: f64 = 0.0;
@@ -1314,22 +1313,18 @@ impl<T: Config> Pallet<T> {
         }
 
         // Calculate the total amount of rewards for the cycle
-        let amount = mining_rewards + storage_rewards;
+        let calculated_amount = mining_rewards + storage_rewards;
 
         // TO DO: Here would be the call to mint the labor tokens
-        let _value = T::Asset::mint_labor_tokens(
-            account.clone(),
-            account.clone(),
-            class_id,
-            asset_id,
-            amount as u128,
-        );
+        let _value =
+            T::Asset::mint_tokens(account.clone(), account.clone(), class_id, asset_id, amount);
 
         Self::deposit_event(Event::MintedLaborTokens {
             account: account.clone(),
             class_id,
             asset_id,
-            amount: amount as u64,
+            amount,
+            calculated_amount: calculated_amount as u64,
         });
         Ok(())
     }
