@@ -125,7 +125,7 @@ pub mod pallet {
         type MaxCID: Get<u32>;
         type Pool: PoolInterface<AccountId = Self::AccountId>;
         type Asset: InterfacePallet<
-            <T as frame_system::Config>::AccountId,
+            &<T as frame_system::Config>::AccountId,
             <T as sugarfunge_asset::pallet::Config>::ClassId,
             <T as sugarfunge_asset::pallet::Config>::AssetId,
             u128,
