@@ -1120,6 +1120,9 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn pick_random_account_cid_pair() -> (Option<T::AccountId>, Option<CIDOf<T>>) {
+        let max_value = ManifestsStorerData::<T>::iter().count();
+        let random_value = <pallet::Pallet<T> as MaxRange>::random(max_value as u64);
+
         if let Some(item) = ManifestsStorerData::<T>::iter().nth(random_value as usize) {
             let account = Some(item.0 .1);
             let cid = Some(item.0 .2);
@@ -1127,8 +1130,6 @@ impl<T: Config> Pallet<T> {
         } else {
             return (None, None);
         }
-
-        return (None, None);
     }
 
     pub fn do_generate_challenge(challenger: &T::AccountId) -> DispatchResult {
