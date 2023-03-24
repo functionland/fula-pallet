@@ -23,6 +23,7 @@ frame_support::construct_runtime!(
         System: frame_system,
         Fula: functionland_fula,
         Pool: fula_pool,
+        Asset: sugarfunge_asset,
     }
 );
 
@@ -68,6 +69,7 @@ impl functionland_fula::Config for Test {
     type MaxManifestMetadata = MaxManifestMetadata;
     type MaxCID = MaxCID;
     type Pool = Pool;
+    type Asset = Asset;
 }
 
 parameter_types! {

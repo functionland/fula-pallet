@@ -106,6 +106,14 @@ pub struct ManifestStorageData {
     pub challenge_state: ChallengeState,
 }
 
+// Struct to store the values of the claims made by users
+#[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
+pub struct ClaimData {
+    pub minted_labor_tokens: MintBalance,
+    pub expected_labor_tokens: MintBalance,
+    pub challenge_tokens: MintBalance,
+}
+
 #[frame_support::pallet]
 pub mod pallet {
     use super::*;
@@ -114,7 +122,7 @@ pub mod pallet {
 
     /// Configure the pallet by specifying the parameters and types on which it depends.
     #[pallet::config]
-    pub trait Config: frame_system::Config {
+    pub trait Config: frame_system::Config + sugarfunge_asset::Config {
         /// Because this pallet emits events, it depends on the runtime's definition of an event.
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
@@ -128,10 +136,11 @@ pub mod pallet {
     pub type ManifestMetadataOf<T> = BoundedVec<u8, <T as Config>::MaxManifestMetadata>;
     pub type CIDOf<T> = BoundedVec<u8, <T as Config>::MaxCID>;
     pub type PoolIdOf<T> = <<T as Config>::Pool as PoolInterface>::PoolId;
-    pub type FileSize = u64;
-    pub type ReplicationFactor = u16;
     pub type ClassId = u64;
     pub type AssetId = u64;
+    pub type MintBalance = u128;
+    pub type FileSize = u64;
+    pub type ReplicationFactor = u16;
     pub type Cycles = u16;
     pub type ActiveDays = i32;
     pub type ManifestOf<T> =
@@ -188,6 +197,12 @@ pub mod pallet {
         CIDOf<T>,
         ChallengeRequestsOf<T>,
     >;
+
+    // Storage to keep the claim data of the users
+    #[pallet::storage]
+    #[pallet::getter(fn claims)]
+    pub(super) type Claims<T: Config> =
+        StorageMap<_, Blake2_128Concat, T::AccountId, ClaimData, OptionQuery>;
 
     // A value to keep track of the Network size when a file is stored or removed
     #[pallet::storage]
@@ -286,7 +301,8 @@ pub mod pallet {
             account: T::AccountId,
             class_id: ClassId,
             asset_id: AssetId,
-            amount: u64,
+            amount: MintBalance,
+            calculated_amount: MintBalance,
         },
     }
 
@@ -301,6 +317,7 @@ pub mod pallet {
         AccountNotStorer,
         AccountNotInPool,
         AccountNotUploader,
+        AccountNotFound,
         ManifestAlreadyExist,
         ManifestNotFound,
         ManifestNotStored,
@@ -509,9 +526,10 @@ pub mod pallet {
             origin: OriginFor<T>,
             class_id: ClassId,
             asset_id: AssetId,
+            amount: MintBalance,
         ) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
-            Self::do_mint_labor_tokens(&who, class_id, asset_id)?;
+            Self::do_mint_labor_tokens(&who, class_id, asset_id, amount)?;
             Ok(().into())
         }
 
@@ -1101,40 +1119,20 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    pub fn pick_random_account_cid_pair(
-        challenger: &T::AccountId,
-    ) -> (Option<T::AccountId>, Option<CIDOf<T>>) {
-        let mut account = challenger.clone();
-
-        while account == challenger.clone() {
-            let max_value = ManifestsStorerData::<T>::iter().count();
-            let random_value = <pallet::Pallet<T> as MaxRange>::random(max_value as u64);
-
-            if let Some(item) = ManifestsStorerData::<T>::iter().nth(random_value as usize) {
-                account = item.0 .1;
-                let cid = Some(item.0 .2);
-
-                if account != challenger.clone() {
-                    return (Some(account), cid);
-                }
-            } else {
-                return (None, None);
-            }
+    pub fn pick_random_account_cid_pair() -> (Option<T::AccountId>, Option<CIDOf<T>>) {
+        if let Some(item) = ManifestsStorerData::<T>::iter().nth(random_value as usize) {
+            let account = Some(item.0 .1);
+            let cid = Some(item.0 .2);
+            return (account, cid);
+        } else {
+            return (None, None);
         }
 
         return (None, None);
     }
 
-    pub fn accounts_to_challenge(account: T::AccountId) -> bool {
-        let result = ManifestsStorerData::<T>::iter().any(|manifest| manifest.0.1 != account);
-        result
-    }
-
-    pub fn do_generate_challenge(challenger: &T::AccountId) -> DispatchResult {        
-        ensure!(Self::accounts_to_challenge(challenger.clone()), Error::<T>::NoAccountsToChallenge);
-        // Get the random pair of account - cid
-
-        let pair = Self::pick_random_account_cid_pair(challenger);
+    pub fn do_generate_challenge(challenger: &T::AccountId) -> DispatchResult {
+        let pair = Self::pick_random_account_cid_pair();
 
         // Validations made to verify some parameters
         ensure!(pair.0.is_some(), Error::<T>::ErrorPickingAccountToChallenge);
@@ -1180,23 +1178,47 @@ impl<T: Config> Pallet<T> {
         for item in ChallengeRequests::<T>::iter() {
             // Checks if the user is the challenged account
             if item.0.clone() == challenged.clone() {
+                let cid = item.1.clone();
+                //Checks that the pool_id + account  + cid exists in the manifests storer data
+                let mut data =
+                    Self::manifests_storage_data((pool_id, challenged.clone(), item.1.clone()))
+                        .ok_or(Error::<T>::ManifestStorerDataNotFound)?;
                 let state;
                 // Verifies if the cids provided contain the cid of the challenge to determine if it's a successful or failed challenge
                 if cids.contains(&item.1) {
                     state = ChallengeState::Successful;
                     successful_cids.push(item.1.to_vec());
+                    // Mint the challenge tokens corresponding to the cid file size
+                    let mut amount = 0;
+                    if let Some(file_check) = Manifests::<T>::get(pool_id, cid.clone()) {
+                        if let Some(file_size) = file_check.size {
+                            amount = file_size * 10;
+                        } else {
+                            amount = 10;
+                        }
+                    }
+                    // Minted the challenge tokens
+                    let _value = sugarfunge_asset::Pallet::<T>::do_mint(
+                        challenged,
+                        challenged,
+                        class_id.into(),
+                        asset_id.into(),
+                        amount as u128,
+                    );
+
+                    // update claimed data
+                    Self::update_claim_data(challenged, 0, 0, amount as u128)
                 } else {
                     state = ChallengeState::Failed;
                     failed_cids.push(item.1.to_vec())
                 }
-                //Checks that the pool_id + account  + cid exists in the manifests storer data
-                let manifest =
-                    Self::manifests_storage_data((pool_id, challenged.clone(), item.1.clone()))
-                        .ok_or(Error::<T>::ManifestStorerDataNotFound)?;
-                // Mint the challenge tokens corresponding to the cid file size
-                Self::mint_challenge_tokens_and_update(
-                    challenged, item.1, pool_id, class_id, asset_id, manifest, state,
-                );
+
+                // Once the mint happens, the challenge is removed
+                ChallengeRequests::<T>::remove(challenged, cid.clone());
+
+                // The latest state of the cid is stored in the manifests storer data storage
+                data.challenge_state = state;
+                ManifestsStorerData::<T>::set((pool_id, challenged, cid.clone()), Some(data));
             }
         }
         Self::deposit_event(Event::VerifiedChallenges {
@@ -1207,23 +1229,29 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    pub fn mint_challenge_tokens_and_update(
-        who: &T::AccountId,
-        cid: CIDOf<T>,
-        pool: PoolIdOf<T>,
-        class_id: ClassId,
-        asset_id: AssetId,
-        mut data: ManifestStorageData,
-        state: ChallengeState,
+    pub fn update_claim_data(
+        account: &T::AccountId,
+        minted_labor_tokens: MintBalance,
+        expected_labor_tokens: MintBalance,
+        challenge_tokens: MintBalance,
     ) {
-        // TO DO: Here would be the call to mint the challenge tokens
-
-        // Once the mint happens, the challenge is removed
-        ChallengeRequests::<T>::remove(who, cid.clone());
-
-        // The latest state of the cid is stored in the manifests storer data storage
-        data.challenge_state = state;
-        ManifestsStorerData::<T>::set((pool, who, cid.clone()), Some(data));
+        if Claims::<T>::try_get(account.clone()).is_ok() {
+            if let Some(mut value) = Self::claims(account.clone()) {
+                value.minted_labor_tokens += minted_labor_tokens;
+                value.expected_labor_tokens += expected_labor_tokens;
+                value.challenge_tokens += challenge_tokens;
+                Claims::<T>::set(account.clone(), Some(value));
+            }
+        } else {
+            Claims::<T>::insert(
+                account.clone(),
+                ClaimData {
+                    minted_labor_tokens,
+                    expected_labor_tokens,
+                    challenge_tokens,
+                },
+            )
+        }
     }
 
     pub fn get_network_size() -> f64 {
@@ -1235,6 +1263,7 @@ impl<T: Config> Pallet<T> {
         account: &T::AccountId,
         class_id: ClassId,
         asset_id: AssetId,
+        amount: MintBalance,
     ) -> DispatchResult {
         // Auxiliar structures
         let mut mining_rewards: f64 = 0.0;
@@ -1307,15 +1336,25 @@ impl<T: Config> Pallet<T> {
         }
 
         // Calculate the total amount of rewards for the cycle
-        let amount = mining_rewards + storage_rewards;
+        let calculated_amount = mining_rewards + storage_rewards;
 
         // TO DO: Here would be the call to mint the labor tokens
+        let _value = sugarfunge_asset::Pallet::<T>::do_mint(
+            account,
+            account,
+            class_id.into(),
+            asset_id.into(),
+            amount,
+        );
+
+        Self::update_claim_data(account, amount, calculated_amount as u128, 0);
 
         Self::deposit_event(Event::MintedLaborTokens {
             account: account.clone(),
             class_id,
             asset_id,
-            amount: amount as u64,
+            amount,
+            calculated_amount: calculated_amount as u128,
         });
         Ok(())
     }
