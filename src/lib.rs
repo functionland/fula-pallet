@@ -335,7 +335,8 @@ pub mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// Updates the values of the manifest storer data given the specific data
-        #[pallet::weight(10_000)]
+        #[pallet::call_index(0)]
+        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         pub fn update_manifest(
             origin: OriginFor<T>,
             cid: CIDOf<T>,
@@ -357,7 +358,8 @@ pub mod pallet {
         }
 
         // Upload a manifest to the chain
-        #[pallet::weight(10_000)]
+        #[pallet::call_index(1)]
+        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         pub fn upload_manifest(
             origin: OriginFor<T>,
             manifest: ManifestMetadataOf<T>,
@@ -371,7 +373,8 @@ pub mod pallet {
         }
 
         // Upload multiple manifests to the chain
-        #[pallet::weight(10_000)]
+        #[pallet::call_index(2)]
+        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         pub fn batch_upload_manifest(
             origin: OriginFor<T>,
             manifest: Vec<ManifestMetadataOf<T>>,
@@ -385,7 +388,8 @@ pub mod pallet {
         }
 
         // Storage an available manifest from the chain
-        #[pallet::weight(10_000)]
+        #[pallet::call_index(3)]
+        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         pub fn storage_manifest(
             origin: OriginFor<T>,
             cid: CIDOf<T>,
@@ -397,7 +401,8 @@ pub mod pallet {
         }
 
         // Storage multiple manifests from the chain
-        #[pallet::weight(10_000)]
+        #[pallet::call_index(4)]
+        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         pub fn batch_storage_manifest(
             origin: OriginFor<T>,
             cids: Vec<CIDOf<T>>,
@@ -409,7 +414,8 @@ pub mod pallet {
         }
 
         // A storer remove a manifest that was being stored on chain
-        #[pallet::weight(10_000)]
+        #[pallet::call_index(5)]
+        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         pub fn remove_stored_manifest(
             origin: OriginFor<T>,
             cid: CIDOf<T>,
@@ -421,7 +427,8 @@ pub mod pallet {
         }
 
         // A storer removed multiple manifests that were being stored on chain
-        #[pallet::weight(10_000)]
+        #[pallet::call_index(6)]
+        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         pub fn batch_remove_stored_manifest(
             origin: OriginFor<T>,
             cids: Vec<CIDOf<T>>,
@@ -433,7 +440,8 @@ pub mod pallet {
         }
 
         // The Uploader remove the manifest from the chain
-        #[pallet::weight(10_000)]
+        #[pallet::call_index(7)]
+        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         pub fn remove_manifest(
             origin: OriginFor<T>,
             cid: CIDOf<T>,
@@ -445,7 +453,8 @@ pub mod pallet {
         }
 
         // The Uploader remove multiple manifests from the chain
-        #[pallet::weight(10_000)]
+        #[pallet::call_index(8)]
+        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         pub fn batch_remove_manifest(
             origin: OriginFor<T>,
             cids: Vec<CIDOf<T>>,
@@ -457,7 +466,8 @@ pub mod pallet {
         }
 
         // A storer verifies if there are invalid manifests still stored on chain and removed them
-        #[pallet::weight(10_000)]
+        #[pallet::call_index(9)]
+        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         pub fn verify_manifests(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
             Self::do_verify_manifests(&who)?;
@@ -465,7 +475,8 @@ pub mod pallet {
         }
 
         // A call to get all the manifest from the chain with possible filters
-        #[pallet::weight(10_000)]
+        #[pallet::call_index(10)]
+        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         pub fn get_manifests(
             _origin: OriginFor<T>,
             pool_id: Option<PoolIdOf<T>>,
@@ -477,7 +488,8 @@ pub mod pallet {
         }
 
         // A call to get all available manifests from the chain with possible filters
-        #[pallet::weight(10_000)]
+        #[pallet::call_index(11)]
+        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         pub fn get_available_manifests(
             _origin: OriginFor<T>,
             pool_id: Option<PoolIdOf<T>>,
@@ -487,7 +499,8 @@ pub mod pallet {
         }
 
         // A call to get all the storers data from the chain with possible filters
-        #[pallet::weight(10_000)]
+        #[pallet::call_index(12)]
+        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         pub fn get_manifests_storer_data(
             _origin: OriginFor<T>,
             pool_id: Option<PoolIdOf<T>>,
@@ -498,7 +511,8 @@ pub mod pallet {
         }
 
         // Generates a challenge to verify if a storer is still holding a random CID that he has on chain
-        #[pallet::weight(10_000)]
+        #[pallet::call_index(13)]
+        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         pub fn generate_challenge(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
             let who = ensure_signed(origin)?;
 
@@ -507,7 +521,8 @@ pub mod pallet {
         }
 
         // Verifies if the challenged account has the CID that was challenged stored
-        #[pallet::weight(10_000)]
+        #[pallet::call_index(14)]
+        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         pub fn verify_challenge(
             origin: OriginFor<T>,
             pool_id: PoolIdOf<T>,
@@ -521,7 +536,8 @@ pub mod pallet {
         }
 
         // Mint the labor tokens that are going to be used to changed for claimed tokens and then for Fula Tokens - This correspond to the previously known rewards
-        #[pallet::weight(10_000)]
+        #[pallet::call_index(15)]
+        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         pub fn mint_labor_tokens(
             origin: OriginFor<T>,
             class_id: ClassId,
@@ -534,7 +550,8 @@ pub mod pallet {
         }
 
         // Updates the file_size of a manifest in the chain
-        #[pallet::weight(10_000)]
+        #[pallet::call_index(16)]
+        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         pub fn update_file_size(
             origin: OriginFor<T>,
             cid: CIDOf<T>,
@@ -547,7 +564,8 @@ pub mod pallet {
         }
 
         // Updates multiple file_sizes of manifests in the chain
-        #[pallet::weight(10_000)]
+        #[pallet::call_index(17)]
+        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         pub fn update_file_sizes(
             origin: OriginFor<T>,
             cids: Vec<CIDOf<T>>,
