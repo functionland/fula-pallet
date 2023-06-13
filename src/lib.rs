@@ -156,8 +156,7 @@ pub mod pallet {
     pub type ChallengeRequestsOf<T> = Challenge<<T as frame_system::Config>::AccountId>;
 
     #[pallet::pallet]
-    #[pallet::without_storage_info]
-    #[pallet::generate_store(pub(super) trait Store)]
+
     pub struct Pallet<T>(_);
 
     // Storage to keep the manifest data - Keys: Pool_id (Pool of the file) - CID (Identifier of the file)
