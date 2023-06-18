@@ -156,6 +156,7 @@ pub mod pallet {
     pub type ChallengeRequestsOf<T> = Challenge<<T as frame_system::Config>::AccountId>;
 
     #[pallet::pallet]
+    #[pallet::without_storage_info]
 
     pub struct Pallet<T>(_);
 
