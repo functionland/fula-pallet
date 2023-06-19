@@ -19,9 +19,10 @@ sp-runtime = { git = "https://github.com/paritytech/substrate", branch = "polkad
 sp-io = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.42", default-features = false }
 sp-std = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.42", default-features = false }
 sp-core = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.42", default-features = false }
-fula-pool = { git = "https://github.com/MauricinhoMorales/fula-pool", branch = "feature/polkadot-v0.9.42", default-features = false }
-sugarfunge-asset = { git = "https://github.com/SugarFunge/sugarfunge-asset", branch = "main", default-features = false }
 pallet-balances = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.9.42", default-features = false }
+
+fula-pool = { git = "https://github.com/functionland/fula-pool", branch = "main", default-features = false }
+sugarfunge-asset = { git = "https://github.com/SugarFunge/sugarfunge-asset", branch = "main", default-features = false }
 sugarfunge-primitives = { git = "https://github.com/SugarFunge/sugarfunge-primitives", branch = "main", default-features = false }
 
 [dev-dependencies]
