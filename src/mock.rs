@@ -23,6 +23,8 @@ frame_support::construct_runtime!(
         System: frame_system,
         Fula: functionland_fula,
         Pool: fula_pool,
+        Balances: pallet_balances,
+        Asset: sugarfunge_asset,
     }
 );
 
@@ -49,13 +51,55 @@ impl system::Config for Test {
     type BlockHashCount = BlockHashCount;
     type Version = ();
     type PalletInfo = PalletInfo;
-    type AccountData = ();
+    type AccountData = pallet_balances::AccountData<Balance>;
     type OnNewAccount = ();
     type OnKilledAccount = ();
     type SystemWeightInfo = ();
     type SS58Prefix = SS58Prefix;
     type OnSetCode = ();
     type MaxConsumers = frame_support::traits::ConstU32<16>;
+}
+
+use sugarfunge_primitives::Balance;
+
+pub const MILLICENTS: Balance = 10_000_000_000_000;
+
+parameter_types! {
+    pub const CreateAssetClassDeposit: Balance = 500 * MILLICENTS;
+    pub const CreateCurrencyClassDeposit: Balance = 500 * MILLICENTS;
+    pub const CreateBagDeposit: Balance = 1;
+}
+
+parameter_types! {
+    pub const ExistentialDeposit: u128 = 500;
+    pub const MaxClassMetadata: u32 = 1;
+    pub const MaxAssetMetadata: u32 = 1;
+}
+
+impl pallet_balances::Config for Test {
+    type Balance = Balance;
+    type RuntimeEvent = RuntimeEvent;
+    type DustRemoval = ();
+    type ExistentialDeposit = ExistentialDeposit;
+    type AccountStore = System;
+    type WeightInfo = pallet_balances::weights::SubstrateWeight<Test>;
+    type MaxLocks = ();
+    type MaxReserves = ();
+    type ReserveIdentifier = [u8; 8];
+    type HoldIdentifier = ();
+    type FreezeIdentifier = ();
+    type MaxHolds = ();
+    type MaxFreezes = ();
+}
+
+impl sugarfunge_asset::Config for Test {
+    type RuntimeEvent = RuntimeEvent;
+    type CreateAssetClassDeposit = CreateAssetClassDeposit;
+    type Currency = Balances;
+    type AssetId = u64;
+    type ClassId = u64;
+    type MaxClassMetadata = MaxClassMetadata;
+    type MaxAssetMetadata = MaxAssetMetadata;
 }
 
 parameter_types! {
