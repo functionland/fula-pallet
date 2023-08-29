@@ -366,8 +366,7 @@ pub mod pallet {
             active_cycles: Cycles,
             missed_cycles: Cycles,
             active_days: ActiveDays,
-            // SBP-M1 review: can just be DispatchResult as no additional information returned
-        ) -> DispatchResultWithPostInfo {
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // SBP-M1 review: take ownership of storer rather than reference as `who` is not used again
             Self::do_update_manifest(
@@ -377,10 +376,7 @@ pub mod pallet {
                 active_days,
                 active_cycles,
                 missed_cycles,
-            )?;
-            // SBP-M1 review: unnecessary .into() once changed to DispatchResult return type
-            // SBP-M1 review: can simplify to just return Self::do_update_manifest(..)
-            Ok(().into())
+            )
         }
 
         // Upload a manifest to the chain
@@ -394,13 +390,9 @@ pub mod pallet {
             cid: CIDOf<T>,
             pool_id: PoolIdOf<T>,
             replication_factor: ReplicationFactor,
-            // SBP-M1 review: can just be DispatchResult as no additional information returned
-        ) -> DispatchResultWithPostInfo {
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            Self::do_upload_manifest(&who, pool_id, cid, manifest, replication_factor)?;
-            // SBP-M1 review: unnecessary .into() once changed to DispatchResult return type
-            // SBP-M1 review: can simplify to just return Self::do_update_manifest(..)
-            Ok(().into())
+            Self::do_upload_manifest(&who, pool_id, cid, manifest, replication_factor)
         }
 
         // Upload multiple manifests to the chain
@@ -416,14 +408,10 @@ pub mod pallet {
             cids: Vec<CIDOf<T>>,
             pool_id: Vec<PoolIdOf<T>>,
             replication_factor: Vec<ReplicationFactor>,
-            // SBP-M1 review: can just be DispatchResult as no additional information returned
-        ) -> DispatchResultWithPostInfo {
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // SBP-M1 review: take ownership of uploader rather than reference as `who` is not used again
-            Self::do_batch_upload_manifest(&who, pool_id, cids, manifest, replication_factor)?;
-            // SBP-M1 review: unnecessary .into() once changed to DispatchResult return type
-            // SBP-M1 review: can simplify to just return Self::do_batch_upload_manifest(..)
-            Ok(().into())
+            Self::do_batch_upload_manifest(&who, pool_id, cids, manifest, replication_factor)
         }
 
         // SBP-M1 review: improve description
@@ -437,13 +425,9 @@ pub mod pallet {
             origin: OriginFor<T>,
             cid: CIDOf<T>,
             pool_id: PoolIdOf<T>,
-            // SBP-M1 review: can just be DispatchResult as no additional information returned
-        ) -> DispatchResultWithPostInfo {
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            Self::do_storage_manifest(&who, pool_id, cid)?;
-            // SBP-M1 review: unnecessary .into() once changed to DispatchResult return type
-            // SBP-M1 review: can simplify to just return Self::do_batch_upload_manifest(..)
-            Ok(().into())
+            Self::do_storage_manifest(&who, pool_id, cid)
         }
 
         // Storage multiple manifests from the chain
@@ -457,14 +441,10 @@ pub mod pallet {
             // SBP-M1 review: use BoundedVec for all Vec parameters, sized appropriately based on weight consumption (benchmarks)
             cids: Vec<CIDOf<T>>,
             pool_id: PoolIdOf<T>,
-            // SBP-M1 review: can just be DispatchResult as no additional information returned
-        ) -> DispatchResultWithPostInfo {
+        ) -> DispatchResult {
             // SBP-M1 review: take ownership of storer rather than reference as `who` is not used again
             let who = ensure_signed(origin)?;
-            Self::do_batch_storage_manifest(&who, pool_id, cids)?;
-            // SBP-M1 review: unnecessary .into() once changed to DispatchResult return type
-            // SBP-M1 review: can simplify to just return Self::do_batch_storage_manifest(..)
-            Ok(().into())
+            Self::do_batch_storage_manifest(&who, pool_id, cids)
         }
 
         // A storer remove a manifest that was being stored on chain
@@ -477,13 +457,9 @@ pub mod pallet {
             origin: OriginFor<T>,
             cid: CIDOf<T>,
             pool_id: PoolIdOf<T>,
-            // SBP-M1 review: can just be DispatchResult as no additional information returned
-        ) -> DispatchResultWithPostInfo {
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            Self::do_remove_storer(&who, pool_id, cid)?;
-            // SBP-M1 review: unnecessary .into() once changed to DispatchResult return type
-            // SBP-M1 review: can simplify to just return Self::do_remove_storer(..)
-            Ok(().into())
+            Self::do_remove_storer(&who, pool_id, cid)
         }
 
         // A storer removed multiple manifests that were being stored on chain
@@ -497,14 +473,10 @@ pub mod pallet {
             // SBP-M1 review: use BoundedVec for all Vec parameters, sized appropriately based on weight consumption (benchmarks)
             cids: Vec<CIDOf<T>>,
             pool_id: PoolIdOf<T>,
-            // SBP-M1 review: can just be DispatchResult as no additional information returned
-        ) -> DispatchResultWithPostInfo {
+        ) -> DispatchResult {
             // SBP-M1 review: take ownership of storer rather than reference as `who` is not used again
             let who = ensure_signed(origin)?;
-            Self::do_batch_remove_storer(&who, pool_id, cids)?;
-            // SBP-M1 review: unnecessary .into() once changed to DispatchResult return type
-            // SBP-M1 review: can simplify to just return Self::do_batch_remove_storer(..)
-            Ok(().into())
+            Self::do_batch_remove_storer(&who, pool_id, cids)
         }
 
         // The Uploader remove the manifest from the chain
@@ -516,13 +488,9 @@ pub mod pallet {
             origin: OriginFor<T>,
             cid: CIDOf<T>,
             pool_id: PoolIdOf<T>,
-            // SBP-M1 review: can just be DispatchResult as no additional information returned
-        ) -> DispatchResultWithPostInfo {
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            Self::do_remove_manifest(&who, pool_id, cid)?;
-            // SBP-M1 review: unnecessary .into() once changed to DispatchResult return type
-            // SBP-M1 review: can simplify to just return Self::do_remove_manifest(..)
-            Ok(().into())
+            Self::do_remove_manifest(&who, pool_id, cid)
         }
 
         // The Uploader remove multiple manifests from the chain
@@ -537,13 +505,12 @@ pub mod pallet {
             cids: Vec<CIDOf<T>>,
             pool_ids: Vec<PoolIdOf<T>>,
             // SBP-M1 review: can just be DispatchResult as no additional information returned
-        ) -> DispatchResultWithPostInfo {
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // SBP-M1 review: take ownership of uploaded rather than reference as `who` is not used again
-            Self::do_batch_remove_manifest(&who, pool_ids, cids)?;
+            Self::do_batch_remove_manifest(&who, pool_ids, cids)
             // SBP-M1 review: unnecessary .into() once changed to DispatchResult return type
             // SBP-M1 review: can simplify to just return Self::do_batch_remove_manifest(..)
-            Ok(().into())
         }
 
         // SBP-M1 review: 'removes them'
@@ -554,14 +521,10 @@ pub mod pallet {
         #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         // SBP-M1 review: why would a storer bother calling this to clean up? It would cost them in tx fees so disincentivized to clean up leading to state bloat. A suggestion is to take a deposit for storage, so they are incentivized to clean up to reclaim deposit
         // SBP-M1 review: add optional parameter to specify the maximum number of ManifestStorageData items to check per call
-        // SBP-M1 review: can just be DispatchResult as no additional information returned
-        pub fn verify_manifests(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
+        pub fn verify_manifests(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // SBP-M1 review: take ownership of storer rather than reference as `who` is not used again
-            Self::do_verify_manifests(&who)?;
-            // SBP-M1 review: unnecessary .into() once changed to DispatchResult return type
-            // SBP-M1 review: can simplify to just return Self::do_verify_manifests(..)
-            Ok(().into())
+            Self::do_verify_manifests(&who)
         }
 
         // SBP-M1 review: assume this dispatchable is acting as a 'getter', which is not the intended usage of dispatchable functions
@@ -621,14 +584,10 @@ pub mod pallet {
         // SBP-M1 review: implement benchmark and use resulting weight function
         // SBP-M1 review: unnecessary cast
         #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
-        // SBP-M1 review: can just be DispatchResult as no additional information returned
-        pub fn generate_challenge(origin: OriginFor<T>) -> DispatchResultWithPostInfo {
+        pub fn generate_challenge(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // SBP-M1 review: take ownership of challenger rather than reference as `who` is not used again
-            Self::do_generate_challenge(&who)?;
-            // SBP-M1 review: unnecessary .into() once changed to DispatchResult return type
-            // SBP-M1 review: can simplify to just return Self::do_generate_challenge(..)
-            Ok(().into())
+            Self::do_generate_challenge(&who)
         }
 
         // Verifies if the challenged account has the CID that was challenged stored
@@ -645,14 +604,10 @@ pub mod pallet {
             // SBP-M1 review: no verification of these parameters to ensure they pertain to 'challenge tokens'. Seems caller could specify anything and have them minted, depending on assets defined within assets pallet. Perhaps some allowlist configured on the pallet?
             class_id: ClassId,
             asset_id: AssetId,
-            // SBP-M1 review: can just be DispatchResult as no additional information returned
-        ) -> DispatchResultWithPostInfo {
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // SBP-M1 review: take ownership of challenged rather than reference as `who` is not used again
-            Self::do_verify_challenge(&who, cids, pool_id, class_id, asset_id)?;
-            // SBP-M1 review: unnecessary .into() once changed to DispatchResult return type
-            // SBP-M1 review: can simplify to just return Self::do_verify_challenge(..)
-            Ok(().into())
+            Self::do_verify_challenge(&who, cids, pool_id, class_id, asset_id)
         }
 
         // Mint the labor tokens that are going to be used to changed for claimed tokens and then for Fula Tokens - This correspond to the previously known rewards
@@ -666,14 +621,10 @@ pub mod pallet {
             class_id: ClassId,
             asset_id: AssetId,
             amount: MintBalance,
-            // SBP-M1 review: can just be DispatchResult as no additional information returned
-        ) -> DispatchResultWithPostInfo {
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // SBP-M1 review: take ownership of account rather than reference as `who` is not used again
-            Self::do_mint_labor_tokens(&who, class_id, asset_id, amount)?;
-            // SBP-M1 review: unnecessary .into() once changed to DispatchResult return type
-            // SBP-M1 review: can simplify to just return Self::do_mint_labor_tokens(..)
-            Ok(().into())
+            Self::do_mint_labor_tokens(&who, class_id, asset_id, amount)
         }
 
         // Updates the file_size of a manifest in the chain
@@ -687,13 +638,9 @@ pub mod pallet {
             pool_id: PoolIdOf<T>,
             // SBP-M1 review: no controls to ensure that size is valid. Caller can just specify max size to maximise rewards
             size: FileSize,
-            // SBP-M1 review: can just be DispatchResult as no additional information returned
-        ) -> DispatchResultWithPostInfo {
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            Self::do_update_size(&who, pool_id, cid, size)?;
-            // SBP-M1 review: unnecessary .into() once changed to DispatchResult return type
-            // SBP-M1 review: can simplify to just return Self::do_update_size(..)
-            Ok(().into())
+            Self::do_update_size(&who, pool_id, cid, size)
         }
 
         // Updates multiple file_sizes of manifests in the chain
@@ -708,14 +655,10 @@ pub mod pallet {
             cids: Vec<CIDOf<T>>,
             pool_id: PoolIdOf<T>,
             sizes: Vec<FileSize>,
-            // SBP-M1 review: can just be DispatchResult as no additional information returned
-        ) -> DispatchResultWithPostInfo {
+        ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // SBP-M1 review: take ownership of storer rather than reference as `who` is not used again
-            Self::do_update_sizes(&who, pool_id, cids, sizes)?;
-            // SBP-M1 review: unnecessary .into() once changed to DispatchResult return type
-            // SBP-M1 review: can simplify to just return Self::do_update_sizes(..)
-            Ok(().into())
+            Self::do_update_sizes(&who, pool_id, cids, sizes)
         }
     }
 
@@ -928,7 +871,6 @@ impl<T: Config> Pallet<T> {
             Error::<T>::ManifestNotFound
         );
         // Add the storer to the manifest storage
-        // SBP-M1 review: pass keys by reference instead of wasteful cloning
         Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
             // SBP-M1 review: use let-else to reduce if nesting
             if let Some(manifest) = value {
