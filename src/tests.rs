@@ -1,5 +1,6 @@
 use crate::{
     mock::*,
+    // SBP-M1 review: remove unused import
     //ManifestCIDOf,
     ManifestMetadataOf,
 };
@@ -16,6 +17,8 @@ pub fn before_test() {
     run_to_block(10);
 }
 
+// SBP-M1 review: test failure - 'thread 'tests::update_manifest' panicked at 'Event expected', src/tests.rs:11:10'
+// SBP-M1 review: add ci to require successful tests before merging
 #[test]
 fn update_manifest() {
     new_test_ext().execute_with(|| {
@@ -31,9 +34,11 @@ fn update_manifest() {
         "#
         .as_bytes();
 
+        // SBP-M1 review: consider type alias to simplify type reference
         let hash = <Test as frame_system::Config>::Hashing::hash(manifest);
         let hash: ManifestMetadataOf<Test> = hash.as_bytes().to_vec().try_into().unwrap();
 
+        // SBP-M1 review: remove commented out code
         // let cid = r#"ipfs://QmVzrsZSVJAXkabinxTssvV3xRWyLzWJeQ9rnwyZf5FKoE"#.as_bytes();
 
         // let cid_hash = <Test as frame_system::Config>::Hashing::hash(cid);
