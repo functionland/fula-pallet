@@ -7,12 +7,8 @@ use frame_system::{self as system};
 use fula_pool::PoolInterface;
 use libm::exp;
 use scale_info::TypeInfo;
-// SBP-M1 review: nest use statements
-use sp_runtime::traits::BlakeTwo256;
-use sp_runtime::traits::Hash;
-use sp_runtime::RuntimeDebug;
-use sp_std::prelude::*;
-use sp_std::vec::Vec;
+use sp_runtime::{traits::{BlakeTwo256, Hash}, RuntimeDebug};
+use sp_std::{prelude::*, vec::Vec};
 
 // SBP-M1 review: remove template comments
 /// Edit this file to define custom logic or remove it if it is not needed.
@@ -50,8 +46,7 @@ mod benchmarking;
 
 // SBP-M1 review: consider moving structs to separate module
 
-// SBP-M1 review: consider adding doc comments for struct fields
-// Manifest struct store the data related to an specific CID
+/// Manifest struct store the data related to an specific CID
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct Manifest<AccountId, ManifestMetadataOf> {
     // SBP-M1 review: use BoundedVec to ensure state changes remain within block limits - see weights/benchmarking
@@ -62,8 +57,7 @@ pub struct Manifest<AccountId, ManifestMetadataOf> {
     pub size: Option<FileSize>,
 }
 
-// SBP-M1 review: consider adding doc comments for struct fields
-// Struct to store the data related to the uploader of a manifest
+/// Struct to store the data related to the uploader of a manifest
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct UploaderData<AccountId> {
     pub uploader: AccountId,
@@ -72,8 +66,7 @@ pub struct UploaderData<AccountId> {
     pub replication_factor: ReplicationFactor,
 }
 
-// SBP-M1 review: consider adding doc comments for struct fields
-// Manifest struct for the call Get_manifests
+/// Manifest struct for the call Get_manifests
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 // SBP-M1 review: 'getter' structs, move to runtime api
 pub struct ManifestWithPoolId<PoolId, AccountId, ManifestMetadataOf> {
@@ -84,8 +77,7 @@ pub struct ManifestWithPoolId<PoolId, AccountId, ManifestMetadataOf> {
     pub size: Option<FileSize>,
 }
 
-// SBP-M1 review: consider adding doc comments for struct fields
-// Manifest struct for the call Get_available_manifests
+/// Manifest struct for the call Get_available_manifests
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 // SBP-M1 review: 'getter' structs, move to runtime api
 pub struct ManifestAvailable<PoolId, ManifestMetadataOf> {
@@ -94,9 +86,7 @@ pub struct ManifestAvailable<PoolId, ManifestMetadataOf> {
     pub manifest_metadata: ManifestMetadataOf,
 }
 
-// SBP-M1 review: consider adding doc comments for struct fields
-// SBP-M1 review: missing space between //Manifest
-//Manifest struct for the call Get_manifest_storers_data
+/// Manifest struct for the call Get_manifest_storers_data
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct StorerData<PoolId, Cid, AccountId> {
     pub pool_id: PoolId,
@@ -105,16 +95,14 @@ pub struct StorerData<PoolId, Cid, AccountId> {
     pub manifest_data: ManifestStorageData,
 }
 
-// SBP-M1 review: consider adding doc comments for struct fields
-// Challenge Struct that will store the Open challenges to verify the existence of a file in the challenged IPFS node
+/// Challenge Struct that will store the Open challenges to verify the existence of a file in the challenged IPFS node
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct Challenge<AccountId> {
     pub challenger: AccountId,
     pub challenge_state: ChallengeState,
 }
 
-// SBP-M1 review: consider adding doc comments for enum variants
-// Enum that represent the current verify state of a file on-chain if a challenge was successful / failed / open
+/// Enum that represent the current verify state of a file on-chain if a challenge was successful / failed / open
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub enum ChallengeState {
     Open,
@@ -122,8 +110,7 @@ pub enum ChallengeState {
     Failed,
 }
 
-// SBP-M1 review: consider adding doc comments for struct fields
-// Manifests struct to store the variables needed to the calculation of the labor_tokens of a given file
+/// Manifests struct to store the variables needed to the calculation of the labor_tokens of a given file
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct ManifestStorageData {
     pub active_cycles: Cycles,
@@ -132,8 +119,7 @@ pub struct ManifestStorageData {
     pub challenge_state: ChallengeState,
 }
 
-// SBP-M1 review: consider adding doc comments for struct fields
-// Struct to store the values of the claims made by users
+/// Struct to store the values of the claims made by users
 #[derive(Encode, Decode, Clone, Eq, PartialEq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
 pub struct ClaimData {
     pub minted_labor_tokens: MintBalance,
@@ -147,8 +133,6 @@ pub mod pallet {
     use frame_support::{dispatch::DispatchResultWithPostInfo, pallet_prelude::*};
     use frame_system::pallet_prelude::*;
 
-    // SBP-M1 review: consider removing comment inherited from template
-    /// Configure the pallet by specifying the parameters and types on which it depends.
     #[pallet::config]
     // SBP-M1 review: use loose pallet coupling (https://docs.substrate.io/reference/how-to-guides/pallet-design/use-loose-coupling/)
     // SBP-M1 review: if no trait is available, define a trait within this pallet and then have the runtime implement the trait, calling into the function of the other pallet (Asset::do_mint)
@@ -156,8 +140,7 @@ pub mod pallet {
         /// Because this pallet emits events, it depends on the runtime's definition of an event.
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
-        // SBP-M1 review: missing associated type doc comments, essential for pallet users
-        // Constant values
+        /// Constant values
         #[pallet::constant]
         type MaxManifestMetadata: Get<u32>;
         type MaxCID: Get<u32>;
@@ -195,8 +178,7 @@ pub mod pallet {
 
     pub struct Pallet<T>(_);
 
-    // SBP-M1 review: use doc comment
-    // Storage to keep the manifest data - Keys: Pool_id (Pool of the file) - CID (Identifier of the file)
+    /// Storage to keep the manifest data - Keys: Pool_id (Pool of the file) - CID (Identifier of the file)
     #[pallet::storage]
     #[pallet::getter(fn manifests)]
     pub(super) type Manifests<T: Config> = StorageDoubleMap<
@@ -208,8 +190,7 @@ pub mod pallet {
         ManifestOf<T>,
     >;
 
-    // SBP-M1 review: use doc comment
-    // Storage to keep the data of the storers - Pool_id (Pool of the file) - Account (of the storer) - CID (Identifier of the file)
+    /// Storage to keep the data of the storers - Pool_id (Pool of the file) - Account (of the storer) - CID (Identifier of the file)
     #[pallet::storage]
     #[pallet::getter(fn manifests_storage_data)]
     pub(super) type ManifestsStorerData<T: Config> = StorageNMap<
@@ -224,8 +205,7 @@ pub mod pallet {
         OptionQuery,
     >;
 
-    // SBP-M1 review: use doc comment
-    // Storage to keep the open challenge Requests to verify the existence of a file - Keys: Account (of the user challenged) - CID (Identifier of the file)
+    /// Storage to keep the open challenge Requests to verify the existence of a file - Keys: Account (of the user challenged) - CID (Identifier of the file)
     #[pallet::storage]
     #[pallet::getter(fn challenges)]
     pub(super) type ChallengeRequests<T: Config> = StorageDoubleMap<
@@ -238,16 +218,14 @@ pub mod pallet {
         ChallengeRequestsOf<T>,
     >;
 
-    // SBP-M1 review: use doc comment
-    // Storage to keep the claim data of the users
+    /// Storage to keep the claim data of the users
     #[pallet::storage]
     #[pallet::getter(fn claims)]
     pub(super) type Claims<T: Config> =
         // SBP-M1 review: OptionQuery is default so can be removed
         StorageMap<_, Blake2_128Concat, T::AccountId, ClaimData, OptionQuery>;
 
-    // SBP-M1 review: use doc comment
-    // A value to keep track of the Network size when a file is stored or removed
+    /// A value to keep track of the Network size when a file is stored or removed
     #[pallet::storage]
     // SBP-M1 review: restrict visibility > pub(super)
     pub type NetworkSize<T: Config> = StorageValue<_, u64, ValueQuery>;
@@ -351,8 +329,7 @@ pub mod pallet {
         },
     }
 
-    // SBP-M1 review: consider adding doc comments for enum variants
-    // Errors inform users that something went wrong.
+    /// Errors inform users that something went wrong.
     #[pallet::error]
     pub enum Error<T> {
         NoneValue,
@@ -375,14 +352,9 @@ pub mod pallet {
         NoAccountsToChallenge,
     }
 
-    // SBP-M1 review: remove comment inherited from template
-    // Dispatchable functions allows users to interact with the pallet and invoke state changes.
-    // These functions materialize as "extrinsics", which are often compared to transactions.
-    // Dispatchable functions must be annotated with a weight and must return a DispatchResult.
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        // SBP-M1 review: missing parameter doc comments
-        /// Updates the values of the manifest storer data given the specific data
+        // Updates the values of the manifest storer data given the specific data
         #[pallet::call_index(0)]
         // SBP-M1 review: implement benchmark and use resulting weight function
         // SBP-M1 review: unnecessary cast

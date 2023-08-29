@@ -1,14 +1,14 @@
 [package]
-#SBP-M1 review: use " for consistency
-name = 'functionland-fula'
+name = "functionland-fula"
 version = "0.1.0"
 #SBP-M1 review: authors appears to be invalid
-authors = ["SugarFunge Developers"]
+authors = ["SugarFunge Developers <>"]
 edition = "2021"
 #SBP-M1 review: ensure that licenses satisfy the requirements of all dependencies
 license = "Proprietary"
 #SBP-M1 review: missing description
-#SBP-M1 review: missing repository
+description = "Contains the FULA storage manifest consensus Pallet"
+repository  = "https://github.com/functionland/fula-pallet"
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
