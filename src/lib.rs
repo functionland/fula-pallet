@@ -10,10 +10,6 @@ use scale_info::TypeInfo;
 use sp_runtime::{traits::{BlakeTwo256, Hash}, RuntimeDebug};
 use sp_std::{prelude::*, vec::Vec};
 
-// SBP-M1 review: remove template comments
-/// Edit this file to define custom logic or remove it if it is not needed.
-/// Learn more about FRAME and the core library of Substrate FRAME pallets:
-/// <https://docs.substrate.io/v3/runtime/frame>
 pub use pallet::*;
 
 // SBP-M1 review: group constants in block (formatting)
@@ -26,6 +22,7 @@ const DAILY_TOKENS_STORAGE: f64 = YEARLY_TOKENS as f64 * 0.20 / (12 * 30) as f64
 
 const NUMBER_CYCLES_TO_ADVANCE: u16 = 3;
 const NUMBER_CYCLES_TO_RESET: u16 = 3;
+
 // SBP-M1 review: missing trait doc comments
 pub trait MaxRange {
     type Range;
@@ -368,9 +365,8 @@ pub mod pallet {
             active_days: ActiveDays,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            // SBP-M1 review: take ownership of storer rather than reference as `who` is not used again
             Self::do_update_manifest(
-                &who,
+                who,
                 pool_id,
                 cid,
                 active_days,
@@ -410,8 +406,7 @@ pub mod pallet {
             replication_factor: Vec<ReplicationFactor>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            // SBP-M1 review: take ownership of uploader rather than reference as `who` is not used again
-            Self::do_batch_upload_manifest(&who, pool_id, cids, manifest, replication_factor)
+            Self::do_batch_upload_manifest(who, pool_id, cids, manifest, replication_factor)
         }
 
         // SBP-M1 review: improve description
@@ -442,9 +437,8 @@ pub mod pallet {
             cids: Vec<CIDOf<T>>,
             pool_id: PoolIdOf<T>,
         ) -> DispatchResult {
-            // SBP-M1 review: take ownership of storer rather than reference as `who` is not used again
             let who = ensure_signed(origin)?;
-            Self::do_batch_storage_manifest(&who, pool_id, cids)
+            Self::do_batch_storage_manifest(who, pool_id, cids)
         }
 
         // A storer remove a manifest that was being stored on chain
@@ -474,9 +468,8 @@ pub mod pallet {
             cids: Vec<CIDOf<T>>,
             pool_id: PoolIdOf<T>,
         ) -> DispatchResult {
-            // SBP-M1 review: take ownership of storer rather than reference as `who` is not used again
             let who = ensure_signed(origin)?;
-            Self::do_batch_remove_storer(&who, pool_id, cids)
+            Self::do_batch_remove_storer(who, pool_id, cids)
         }
 
         // The Uploader remove the manifest from the chain
@@ -507,10 +500,7 @@ pub mod pallet {
             // SBP-M1 review: can just be DispatchResult as no additional information returned
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            // SBP-M1 review: take ownership of uploaded rather than reference as `who` is not used again
-            Self::do_batch_remove_manifest(&who, pool_ids, cids)
-            // SBP-M1 review: unnecessary .into() once changed to DispatchResult return type
-            // SBP-M1 review: can simplify to just return Self::do_batch_remove_manifest(..)
+            Self::do_batch_remove_manifest(who, pool_ids, cids)
         }
 
         // SBP-M1 review: 'removes them'
@@ -523,8 +513,7 @@ pub mod pallet {
         // SBP-M1 review: add optional parameter to specify the maximum number of ManifestStorageData items to check per call
         pub fn verify_manifests(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            // SBP-M1 review: take ownership of storer rather than reference as `who` is not used again
-            Self::do_verify_manifests(&who)
+            Self::do_verify_manifests(who)
         }
 
         // SBP-M1 review: assume this dispatchable is acting as a 'getter', which is not the intended usage of dispatchable functions
@@ -578,7 +567,6 @@ pub mod pallet {
             Ok(().into())
         }
 
-        // SBP-M1 review: consider inclusive language
         // Generates a challenge to verify if a storer is still holding a random CID that he has on chain
         #[pallet::call_index(13)]
         // SBP-M1 review: implement benchmark and use resulting weight function
@@ -586,8 +574,7 @@ pub mod pallet {
         #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
         pub fn generate_challenge(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            // SBP-M1 review: take ownership of challenger rather than reference as `who` is not used again
-            Self::do_generate_challenge(&who)
+            Self::do_generate_challenge(who)
         }
 
         // Verifies if the challenged account has the CID that was challenged stored
@@ -623,8 +610,7 @@ pub mod pallet {
             amount: MintBalance,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            // SBP-M1 review: take ownership of account rather than reference as `who` is not used again
-            Self::do_mint_labor_tokens(&who, class_id, asset_id, amount)
+            Self::do_mint_labor_tokens(who, class_id, asset_id, amount)
         }
 
         // Updates the file_size of a manifest in the chain
@@ -657,8 +643,7 @@ pub mod pallet {
             sizes: Vec<FileSize>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            // SBP-M1 review: take ownership of storer rather than reference as `who` is not used again
-            Self::do_update_sizes(&who, pool_id, cids, sizes)
+            Self::do_update_sizes(who, pool_id, cids, sizes)
         }
     }
 
@@ -667,14 +652,11 @@ pub mod pallet {
         // SBP-M1 review: consider using the Randomness trait (https://docs.substrate.io/build/randomness/) as an improvement, provided the randomness source available via the node runtime is sufficiently secure for your needs
         // SBP-M1 review: https://github.com/paritytech/substrate/blob/master/frame/lottery/src/lib.rs may also be helpful
         fn random(max_range: Self::Range) -> u64 {
-            // SBP-M1 review: remove commented out code
-            //let who = system::ensure_signed(origin)?;
             let block_number = <system::Pallet<T>>::block_number();
 
             // SBP-M1 review: 'let input: Vec<u8> = block_number.encode()'
             let mut input = Vec::new();
-            // SBP-M1 review: remove commented out code
-            //input.extend_from_slice(&who.encode());
+
             input.extend_from_slice(&block_number.encode());
 
             let hash_result = BlakeTwo256::hash_of(&input);
@@ -762,7 +744,7 @@ impl<T: Config> Pallet<T> {
 
     // SBP-M1 review: should probably be pub(crate) at most
     pub fn do_batch_upload_manifest(
-        uploader: &T::AccountId,
+        uploader: T::AccountId,
         pool_ids: Vec<PoolIdOf<T>>,
         // SBP-M1 review: needless pass by value
         cids: Vec<CIDOf<T>>,
@@ -790,7 +772,7 @@ impl<T: Config> Pallet<T> {
             let manifest = manifests[i].to_owned();
             let replication_factor = replication_factors[i];
             let pool_id = pool_ids[i];
-            Self::do_upload_manifest(uploader, pool_id, cid, manifest, replication_factor)?;
+            Self::do_upload_manifest(&uploader, pool_id, cid, manifest, replication_factor)?;
         }
 
         // SBP-M1 review: wasteful clones > use cargo clippy
@@ -804,7 +786,7 @@ impl<T: Config> Pallet<T> {
 
     // SBP-M1 review: should probably be pub(crate) at most
     pub fn do_update_manifest(
-        storer: &T::AccountId,
+        storer: T::AccountId,
         pool_id: PoolIdOf<T>,
         // SBP-M1 review: needless pass by value
         cid: CIDOf<T>,
@@ -828,7 +810,7 @@ impl<T: Config> Pallet<T> {
         // SBP-M1 review: pass keys by reference instead of wasteful cloning
         // SBP-M1 review: try_mutate unnecessary as closure doesnt return any error - use mutate instead
         ManifestsStorerData::<T>::try_mutate(
-            (pool_id, storer, cid.clone()),
+            (pool_id, &storer, cid.clone()),
             |value| -> DispatchResult {
                 if let Some(manifest) = value {
                     manifest.active_cycles = active_cycles;
@@ -881,16 +863,14 @@ impl<T: Config> Pallet<T> {
                 {
                     ensure!(
                         // SBP-M1 review: use .get() and handle properly rather than []
-                        // SBP-M1 review: unnecessary clone
-                        !manifest.users_data[index].storers.contains(&storer.clone()),
+                        !manifest.users_data[index].storers.contains(&storer),
                         Error::<T>::AccountAlreadyStorer
                     );
                     // SBP-M1 review: indexing may panic
                     manifest.users_data[index].storers.push(storer.clone());
                     // Insert the default data to the storer data storage
                     ManifestsStorerData::<T>::insert(
-                        // SBP-M1 review: unnecessary clone in key, use & instead
-                        (pool_id, storer, cid.clone()),
+                        (pool_id, storer, &cid),
                         // SBP-M1 review: could be refactored to ManifestStorageData::new(ChallengeState::Open)
                         ManifestStorageData {
                             active_cycles: 0,
@@ -922,16 +902,14 @@ impl<T: Config> Pallet<T> {
 
     // SBP-M1 review: should probably be pub(crate) at most
     pub fn do_batch_storage_manifest(
-        storer: &T::AccountId,
+        storer: T::AccountId,
         pool_id: PoolIdOf<T>,
         cids: Vec<CIDOf<T>>,
     ) -> DispatchResult {
         // The cycle to execute multiple times the storage manifests
-        // SBP-M1 review: use 'for cid in cids {}'
-        let n = cids.len();
-        for i in 0..n {
-            let cid = cids[i].to_owned();
-            Self::do_storage_manifest(storer, pool_id, cid)?;
+        for cid in &cids {
+            let cid = cid.to_owned();
+            Self::do_storage_manifest(&storer, pool_id, cid)?;
         }
 
         // SBP-M1 review: wasteful clones > use cargo clippy
@@ -959,9 +937,8 @@ impl<T: Config> Pallet<T> {
         );
         // SBP-M1 review: change to match or let-else/.ok_or()?, returning error as above if no value
         // Get the manifests and the uploaders
-        // SBP-M1 review: unnecessary clone, use &
         // SBP-M1 review: unwrap may panic
-        let manifest = Self::manifests(pool_id, cid.clone()).unwrap();
+        let manifest = Self::manifests(pool_id, &cid).unwrap();
 
         // Found the uploader in the vector of uploader data
         // SBP-M1 review: consider let-else to reduce nesting
@@ -1016,7 +993,7 @@ impl<T: Config> Pallet<T> {
     
     // SBP-M1 review: should probably be pub(crate) at most
     pub fn do_batch_remove_manifest(
-        uploader: &T::AccountId,
+        uploader: T::AccountId,
         // SBP-M1 review: needless pass by value
         pool_ids: Vec<PoolIdOf<T>>,
         cids: Vec<CIDOf<T>>,
@@ -1032,7 +1009,7 @@ impl<T: Config> Pallet<T> {
             // SBP-M1 review: indexing may panic
             let cid = cids[i].to_owned();
             let pool_id = pool_ids[i];
-            Self::do_remove_manifest(uploader, pool_id, cid)?;
+            Self::do_remove_manifest(&uploader, pool_id, cid)?;
         }
 
         // SBP-M1 review: wasteful clones > use cargo clippy
@@ -1066,8 +1043,7 @@ impl<T: Config> Pallet<T> {
         let mut removed_storer = None;
 
         // Try to remove the storer from the manifest storage
-        // SBP-M1 review: unnecessary clone, use & for keys
-        Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
+        Manifests::<T>::try_mutate(pool_id, &cid, |value| -> DispatchResult {
             // SBP-M1 review: use let-else to reduce if nesting
             if let Some(manifest) = value {
                 // Verify if the account is a storer
@@ -1130,7 +1106,7 @@ impl<T: Config> Pallet<T> {
 
     // SBP-M1 review: should probably be pub(crate) at most
     pub fn do_batch_remove_storer(
-        storer: &T::AccountId,
+        storer: T::AccountId,
         pool_id: PoolIdOf<T>,
         cids: Vec<CIDOf<T>>,
     ) -> DispatchResult {
@@ -1141,7 +1117,7 @@ impl<T: Config> Pallet<T> {
         let n = cids.len();
         for i in 0..n {
             let cid = cids[i].to_owned();
-            Self::do_remove_storer(storer, pool_id, cid)?;
+            Self::do_remove_storer(&storer, pool_id, cid)?;
         }
 
         // SBP-M1 review: wasteful clones > use cargo clippy
@@ -1155,7 +1131,7 @@ impl<T: Config> Pallet<T> {
 
     // SBP-M1 review: should probably be pub(crate) at most
     // SBP-M1 review: function too long, needs refactoring
-    pub fn do_verify_manifests(storer: &T::AccountId) -> DispatchResult {
+    pub fn do_verify_manifests(storer: T::AccountId) -> DispatchResult {
         // SBP-M1 review: typo > 'auxiliary'?
         // Auxiliar structures
         let mut invalid_cids = Vec::new();
@@ -1165,8 +1141,7 @@ impl<T: Config> Pallet<T> {
         // Verify the valid or invalid cids from the manifest storer data
         // SBP-M1 review: destructure item into clearer variable names
         for item in ManifestsStorerData::<T>::iter() {
-            // SBP-M1 review: unnecessary clones
-            if storer.clone() == item.0 .1.clone() {
+            if storer.clone() == item.0 .1 {
                 // If the storer has manifests from another pool that is not the current it's invalid and is removed
                 // SBP-M1 review: update trait to avoid clone, borrow should be sufficient for checking membership
                 // SBP-M1 review: use match statement rather then if-else
@@ -1400,7 +1375,7 @@ impl<T: Config> Pallet<T> {
     }
 
     // SBP-M1 review: should probably be pub(crate) at most
-    pub fn do_generate_challenge(challenger: &T::AccountId) -> DispatchResult {
+    pub fn do_generate_challenge(challenger: T::AccountId) -> DispatchResult {
         let pair = Self::pick_random_account_cid_pair();
 
         // Validations made to verify some parameters
@@ -1572,7 +1547,7 @@ impl<T: Config> Pallet<T> {
     // SBP-M1 review: should probably be pub(crate) at most
     // SBP-M1 review: function too long, needs refactoring
     pub fn do_mint_labor_tokens(
-        account: &T::AccountId,
+        account: T::AccountId,
         class_id: ClassId,
         asset_id: AssetId,
         amount: MintBalance,
@@ -1685,15 +1660,15 @@ impl<T: Config> Pallet<T> {
         // SBP-M1 review: remove/action todo
         // TO DO: Here would be the call to mint the labor tokens
         let _value = sugarfunge_asset::Pallet::<T>::do_mint(
-            account,
-            account,
+            &account,
+            &account,
             class_id.into(),
             asset_id.into(),
             amount,
         );
 
         // SBP-M1 review: loss of sign, truncation by casting
-        Self::update_claim_data(account, amount, calculated_amount as u128, 0);
+        Self::update_claim_data(&account, amount, calculated_amount as u128, 0);
 
         // SBP-M1 review: unnecessary clone
         Self::deposit_event(Event::MintedLaborTokens {
@@ -1767,7 +1742,7 @@ impl<T: Config> Pallet<T> {
 
     // SBP-M1 review: should probably be pub(crate) at most
     pub fn do_update_sizes(
-        storer: &T::AccountId,
+        storer: T::AccountId,
         pool_id: PoolIdOf<T>,
         cids: Vec<CIDOf<T>>,
         sizes: Vec<FileSize>,
@@ -1781,7 +1756,7 @@ impl<T: Config> Pallet<T> {
             let cid = cids[i].to_owned();
             // SBP-M1 review: indexing may panic
             let size = sizes[i].to_owned();
-            Self::do_update_size(storer, pool_id, cid, size)?;
+            Self::do_update_size(&storer, pool_id, cid, size)?;
         }
 
         // SBP-M1 review: wasteful clones > use cargo clippy
