@@ -8,6 +8,7 @@ use fula_pool::PoolInterface;
 use libm::exp;
 use scale_info::TypeInfo;
 // SBP-M1 review: nest use statements
+use dotenv::dotenv;
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::traits::Hash;
 use sp_runtime::RuntimeDebug;
@@ -19,24 +20,14 @@ use sp_std::vec::Vec;
 /// Learn more about FRAME and the core library of Substrate FRAME pallets:
 /// <https://docs.substrate.io/v3/runtime/frame>
 pub use pallet::*;
-
-// SBP-M1 review: group constants in block (formatting)
-// SBP-M1 review: number literal lacking separators
-const YEARLY_TOKENS: u64 = 48000000;
-// SBP-M1 review: floating point usage may not be deterministic, using sp_arithmetic::per_things is preferred
-// SBP-M1 review: potential loss of precision in casting
-const DAILY_TOKENS_MINING: f64 = YEARLY_TOKENS as f64 * 0.70 / (12 * 30) as f64;
-const DAILY_TOKENS_STORAGE: f64 = YEARLY_TOKENS as f64 * 0.20 / (12 * 30) as f64;
-
-const NUMBER_CYCLES_TO_ADVANCE: u16 = 3;
-const NUMBER_CYCLES_TO_RESET: u16 = 3;
-// SBP-M1 review: missing trait doc comments
 pub trait MaxRange {
     type Range;
     fn random(max_range: Self::Range) -> u64;
 }
 
 pub type Range = u64;
+
+mod config;
 
 #[cfg(test)]
 mod mock;
@@ -243,7 +234,6 @@ pub mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn claims)]
     pub(super) type Claims<T: Config> =
-        // SBP-M1 review: OptionQuery is default so can be removed
         StorageMap<_, Blake2_128Concat, T::AccountId, ClaimData, OptionQuery>;
 
     // SBP-M1 review: use doc comment
@@ -1099,7 +1089,7 @@ impl<T: Config> Pallet<T> {
         });
         Ok(())
     }
-    
+
     // SBP-M1 review: should probably be pub(crate) at most
     pub fn do_batch_remove_manifest(
         uploader: &T::AccountId,
@@ -1166,7 +1156,10 @@ impl<T: Config> Pallet<T> {
                 // Get the uploader that correspond to the storer
                 if let Some(uploader_index) =
                     // SBP-M1 review: pass by ref to avoid clone
-                    Self::get_uploader_index_given_storer(manifest.users_data.to_owned(), storer)
+                    Self::get_uploader_index_given_storer(
+                        manifest.users_data.to_owned(),
+                        storer,
+                    )
                 {
                     // SBP-M1 review: use let-else to reduce nesting
                     // Get the index of the storer inside the storers vector
@@ -1293,7 +1286,7 @@ impl<T: Config> Pallet<T> {
         });
         Ok(())
     }
-    
+
     // SBP-M1 review: should be moved to runtime-api to query chain state
     // SBP-M1 review: should probably be pub(crate) at most
     // SBP-M1 review: function too long, needs refactoring
@@ -1663,9 +1656,16 @@ impl<T: Config> Pallet<T> {
         asset_id: AssetId,
         amount: MintBalance,
     ) -> DispatchResult {
-        // SBP-M1 review: typo > 'auxiliary'?
-        // Auxiliar structures
-        // SBP-M1 review: floating point usage may not be deterministic, using sp_arithmetic::per_things is preferred
+        dotenv().ok();
+        let env = config::init();
+
+        let yearly_tokens = env.yearly_tokens;
+        let daily_tokens_mining = yearly_tokens as f64 * 0.70 / (12 * 30) as f64;
+        let daily_tokens_storage = yearly_tokens as f64 * 0.20 / (12 * 30) as f64;
+
+        let number_cycles_to_advance = env.cycles_advance;
+        let number_cycles_to_reset = env.cycles_reset;
+
         let mut mining_rewards: f64 = 0.0;
         let mut storage_rewards: f64 = 0.0;
 
@@ -1707,7 +1707,7 @@ impl<T: Config> Pallet<T> {
                 if manifest.1.challenge_state == ChallengeState::Successful {
                     // When the active cycles reached {NUMBER_CYCLES_TO_ADVANCE} which is equal to 1 day, the manifest active days are increased and the rewards are calculated
                     // SBP-M1 review: use match statement
-                    if manifest.1.active_cycles >= NUMBER_CYCLES_TO_ADVANCE {
+                    if manifest.1.active_cycles >= number_cycles_to_advance {
                         // SBP-M1 review: use safe math
                         let active_days = manifest.1.active_days + 1;
 
@@ -1717,14 +1717,14 @@ impl<T: Config> Pallet<T> {
                         // SBP-M1 review: floating point arithmetic
                         storage_rewards += (1 as f64
                             / (1 as f64 + exp(-0.1 * (active_days - 45) as f64)))
-                            * DAILY_TOKENS_STORAGE
+                            * daily_tokens_storage
                             * file_participation;
 
                         // The calculation of the mining rewards
                         // SBP-M1 review: unnecessary cast > use cargo clippy
                         // SBP-M1 review: use safe math
                         // SBP-M1 review: floating point arithmetic
-                        mining_rewards += DAILY_TOKENS_MINING as f64 * file_participation;
+                        mining_rewards += daily_tokens_mining as f64 * file_participation;
 
                         // SBP-M1 review: use safe math to avoid overflow panic
                         updated_data.active_days += 1;
@@ -1737,7 +1737,7 @@ impl<T: Config> Pallet<T> {
                     // SBP-M1 review: will this trigger if challenge_state == ChallengeState::Open?
                     // If the verification of the IPFS File failed {NUMBER_CYCLES_TO_RESET} times, the active_days are reset to 0
                     // SBP-M1 review: use match statement
-                    if manifest.1.missed_cycles >= NUMBER_CYCLES_TO_RESET {
+                    if manifest.1.missed_cycles >= number_cycles_to_reset {
                         updated_data.missed_cycles = 0;
                         updated_data.active_days = 0;
                     } else {
@@ -1825,7 +1825,10 @@ impl<T: Config> Pallet<T> {
                 if let Some(_) =
                     // SBP-M1 review: wasteful .to_vec() call, pass slice?
                     // SBP-M1 review: & not required before &storer > use cargo clippy
-                    Self::get_uploader_index_given_storer(manifest.users_data.to_vec(), &storer)
+                    Self::get_uploader_index_given_storer(
+                        manifest.users_data.to_vec(),
+                        &storer,
+                    )
                 {
                     manifest.size = Some(size);
                     //Update the network size for the total amount of people that had that manifest before the file_size was given
