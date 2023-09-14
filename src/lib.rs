@@ -711,7 +711,7 @@ impl<T: Config> Pallet<T> {
         if let Some(_manifest) = Self::manifests(pool_id, cid.clone()) {
             // SBP-M1 review: wasteful .clone(), & can be used with EncodeLike key
             // SBP-M1 review: try_mutate not required as no error returned, use mutate
-            Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
+            Manifests::<T>::try_mutate(pool_id, &cid, |value| -> DispatchResult {
                 if let Some(manifest) = value {
                     manifest.users_data.push(uploader_data)
                 }
@@ -764,11 +764,8 @@ impl<T: Config> Pallet<T> {
 
         // The cycle to execute multiple times the upload_manifest call
         // SBP-M1 review: loop should be bounded to not exceed block limits (BoundedVec and benchmarking)
-        // SBP-M1 review: use 'for (i, cid) in cids.into_iter().enumerate() {}' to simplify and avoid cids[i] clone
-        let n = cids.len();
-        for i in 0..n {
+        for (i, cid) in cids.into_iter().enumerate() {
             // SBP-M1 review: indexing may panic
-            let cid = cids[i].to_owned();
             let manifest = manifests[i].to_owned();
             let replication_factor = replication_factors[i];
             let pool_id = pool_ids[i];
@@ -848,12 +845,12 @@ impl<T: Config> Pallet<T> {
             Error::<T>::AccountNotInPool
         );
         ensure!(
-            // SBP-M1 review: use .contains_key() as cheaper and pass keys by reference instead of wasteful cloning
-            Manifests::<T>::try_get(pool_id, cid.clone()).is_ok(),
+            Manifests::<T>::contains_key(pool_id, &cid),
             Error::<T>::ManifestNotFound
         );
         // Add the storer to the manifest storage
-        Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
+        // SBP-M1 review: pass keys by reference instead of wasteful cloning
+        Manifests::<T>::try_mutate(pool_id, &cid, |value| -> DispatchResult {
             // SBP-M1 review: use let-else to reduce if nesting
             if let Some(manifest) = value {
                 // Get the next uploader that has available storers
@@ -907,8 +904,7 @@ impl<T: Config> Pallet<T> {
         cids: Vec<CIDOf<T>>,
     ) -> DispatchResult {
         // The cycle to execute multiple times the storage manifests
-        for cid in &cids {
-            let cid = cid.to_owned();
+        for cid in cids.clone() {
             Self::do_storage_manifest(&storer, pool_id, cid)?;
         }
 
@@ -931,8 +927,7 @@ impl<T: Config> Pallet<T> {
     ) -> DispatchResult {
         // Validations made to verify some parameters given
         ensure!(
-            // SBP-M1 review: use .contains_key() as cheaper
-            Manifests::<T>::try_get(pool_id, cid.clone()).is_ok(),
+            Manifests::<T>::contains_key(pool_id, &cid),
             Error::<T>::ManifestNotFound
         );
         // SBP-M1 review: change to match or let-else/.ok_or()?, returning error as above if no value
@@ -950,8 +945,7 @@ impl<T: Config> Pallet<T> {
             // SBP-M1 review: wasteful clone > use cargo clippy
             if manifest.users_data.to_owned().len() > 1 {
                 // SBP-M1 review: use mutate over try_mutate as no error currently returned from closure
-                // SBP-M1 review: unnecessary clone, use & for keys
-                Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
+                Manifests::<T>::mutate(pool_id, &cid, |value| -> DispatchResult {
                     // SBP-M1 review: use let-else to reduce nesting
                     if let Some(manifest) = value {
                         let value_removed = manifest.users_data.remove(index);
@@ -976,8 +970,7 @@ impl<T: Config> Pallet<T> {
                         *total_value -= file_size * manifest.users_data[0].storers.len() as u64;
                     });
                 }
-                // SBP-M1 review: unnecessary clone, use &
-                Manifests::<T>::remove(pool_id, cid.clone());
+                Manifests::<T>::remove(pool_id, &cid);
             }
         }
 
@@ -1004,10 +997,8 @@ impl<T: Config> Pallet<T> {
         // SBP-M1 review: loop should be bounded to not exceed block limits (BoundedVec and benchmarking)
         // SBP-M1 review: use 'for (i, cid) in cids.into_iter().enumerate() {}' to simplify and avoid cids[i] clone
         // The cycle to execute multiple times the remove manifests
-        let n = cids.len();
-        for i in 0..n {
+        for (i, cid) in cids.clone().into_iter().enumerate() {
             // SBP-M1 review: indexing may panic
-            let cid = cids[i].to_owned();
             let pool_id = pool_ids[i];
             Self::do_remove_manifest(&uploader, pool_id, cid)?;
         }
@@ -1031,8 +1022,7 @@ impl<T: Config> Pallet<T> {
     ) -> DispatchResult {
         // Validations made to verify some parameters given
         ensure!(
-            // SBP-M1 review: use .contains_key() as cheaper
-            Manifests::<T>::try_get(pool_id, cid.clone()).is_ok(),
+            Manifests::<T>::contains_key(pool_id, &cid),
             Error::<T>::ManifestNotFound
         );
 
@@ -1111,12 +1101,9 @@ impl<T: Config> Pallet<T> {
         cids: Vec<CIDOf<T>>,
     ) -> DispatchResult {
         // The cycle to execute multiple times the remove storers
-        // SBP-M1 review: use 'for cid in cids {}' > use cargo clippy
         // SBP-M1 review: loops should be bounded to complete within block limits (e.g. BoundedVec)
         // SBP-M1 review: use 'for (i, cid) in cids.into_iter().enumerate() {}' to simplify and avoid cids[i] and clone
-        let n = cids.len();
-        for i in 0..n {
-            let cid = cids[i].to_owned();
+        for cid in cids.clone().into_iter() {
             Self::do_remove_storer(&storer, pool_id, cid)?;
         }
 
@@ -1147,28 +1134,24 @@ impl<T: Config> Pallet<T> {
                 // SBP-M1 review: use match statement rather then if-else
                 if T::Pool::is_member(item.0 .1.clone(), item.0 .0) {
                     // If the manifest is still in the manifest storage is a valid cid, if not it's invalid and is removed
-                    // SBP-M1 review: unnecessary clone, use & for keys
-                    // SBP-M1 review: use .contains_key() as cheaper, you are reading the value just to discard
                     // SBP-M1 review: use match statement rather then if-else
-                    if Manifests::<T>::try_get(item.0 .0, item.0 .2.clone()).is_ok() {
+                    if Manifests::<T>::contains_key(item.0 .0, &item.0 .2) {
                         valid_cids.push(item.0 .2.to_vec());
                     } else {
                         invalid_cids.push(item.0 .2.to_vec());
 
-                        // SBP-M1 review: unnecessary clone, use &
                         ManifestsStorerData::<T>::remove((
                             item.0 .0,
-                            item.0 .1.clone(),
-                            item.0 .2.clone(),
+                            &item.0 .1,
+                            &item.0 .2,
                         ));
                     }
                 } else {
                     invalid_cids.push(item.0 .2.to_vec());
-                    // SBP-M1 review: unnecessary clone, use &
                     ManifestsStorerData::<T>::remove((
                         item.0 .0,
-                        item.0 .1.clone(),
-                        item.0 .2.clone(),
+                        &item.0 .1,
+                        &item.0 .2,
                     ));
                 }
             }
@@ -1366,11 +1349,9 @@ impl<T: Config> Pallet<T> {
         if let Some(item) = ManifestsStorerData::<T>::iter().nth(random_value as usize) {
             let account = Some(item.0 .1);
             let cid = Some(item.0 .2);
-            // SBP-M1 review: unneeded return statement > use cargo clippy
-            return (account, cid);
+            (account, cid)
         } else {
-            // SBP-M1 review: unneeded return statement > use cargo clippy
-            return (None, None);
+            (None, None)
         }
     }
 
@@ -1436,12 +1417,10 @@ impl<T: Config> Pallet<T> {
             // Checks if the user is the challenged account
             // SBP-M1 review: use let-else with `continue` to reduce nesting, or add .filter() to .iter()
             if item.0.clone() == challenged.clone() {
-                // SBP-M1 review: unnecessary clone
-                let cid = item.1.clone();
+                let cid = &item.1;
                 //Checks that the pool_id + account  + cid exists in the manifests storer data
                 let mut data =
-                    // SBP-M1 review: unnecessary clones, use & for keys
-                    Self::manifests_storage_data((pool_id, challenged.clone(), item.1.clone()))
+                    Self::manifests_storage_data((pool_id, &challenged, &item.1))
                         .ok_or(Error::<T>::ManifestStorerDataNotFound)?;
                 let state;
                 // Verifies if the cids provided contain the cid of the challenge to determine if it's a successful or failed challenge
@@ -1452,8 +1431,7 @@ impl<T: Config> Pallet<T> {
                     // Mint the challenge tokens corresponding to the cid file size
                     // SBP-M1 review: initialise amount as result of match (e.g. `let amount = match .. {}`)
                     let mut amount = 0;
-                    // SBP-M1 review: unnecessary clone, use & for keys
-                    if let Some(file_check) = Manifests::<T>::get(pool_id, cid.clone()) {
+                    if let Some(file_check) = Manifests::<T>::get(pool_id, &cid) {
                         // SBP-M1 review: consider moving multiplication factor to constant or runtime config
                         // SBP-M1 review: use match statement
                         if let Some(file_size) = file_check.size {
@@ -1481,14 +1459,11 @@ impl<T: Config> Pallet<T> {
                 }
 
                 // Once the mint happens, the challenge is removed
-                // SBP-M1 review: unnecessary clone, use &
-                ChallengeRequests::<T>::remove(challenged, cid.clone());
+                ChallengeRequests::<T>::remove(challenged, &cid);
 
                 // The latest state of the cid is stored in the manifests storer data storage
                 data.challenge_state = state;
-                // SBP-M1 review: unnecessary clone, use & for keys
-                // SBP-M1 review: use .insert to avoid Some(..)
-                ManifestsStorerData::<T>::set((pool_id, challenged, cid.clone()), Some(data));
+                ManifestsStorerData::<T>::insert((pool_id, challenged, &cid), data);
             }
         }
         // SBP-M1 review: unnecessary clone
@@ -1507,26 +1482,21 @@ impl<T: Config> Pallet<T> {
         expected_labor_tokens: MintBalance,
         challenge_tokens: MintBalance,
     ) {
-        // SBP-M1 review: unnecessary clone, use & for keys
         // SBP-M1 review: use contains_key() as cheaper, value not used
         // SBP-M1 review: use Claims::mutate(..) with inner match statement to upsert
         // SBP-M1 review: use match statement
-        if Claims::<T>::try_get(account.clone()).is_ok() {
+        if Claims::<T>::try_get(&account).is_ok() {
             // SBP-M1 review: re-querying after just checked
-            // SBP-M1 review: unnecessary clone, use & for keys
-            if let Some(mut value) = Self::claims(account.clone()) {
+            if let Some(mut value) = Self::claims(&account) {
                 // SBP-M1 review: use safe math
                 value.minted_labor_tokens += minted_labor_tokens;
                 value.expected_labor_tokens += expected_labor_tokens;
                 value.challenge_tokens += challenge_tokens;
-                // SBP-M1 review: unnecessary clone, use & for keys
-                // SBP-M1 review: use .insert() to avoid Some(..)
-                Claims::<T>::set(account.clone(), Some(value));
+                Claims::<T>::insert(&account, value);
             }
         } else {
             Claims::<T>::insert(
-                // SBP-M1 review: unnecessary clone, use & for keys
-                account.clone(),
+                &account,
                 ClaimData {
                     minted_labor_tokens,
                     expected_labor_tokens,
@@ -1538,10 +1508,9 @@ impl<T: Config> Pallet<T> {
 
     // SBP-M1 review: should probably be pub(crate) at most
     pub fn get_network_size() -> f64 {
-        // SBP-M1 review: unneeded return statement > use cargo clippy
         // SBP-M1 review: loss of precision cast
         // Returns the value of the network size value
-        return NetworkSize::<T>::get() as f64;
+        NetworkSize::<T>::get() as f64
     }
 
     // SBP-M1 review: should probably be pub(crate) at most
@@ -1572,18 +1541,16 @@ impl<T: Config> Pallet<T> {
             if account.clone() == manifest.0 .1.clone() {
                 // Store the data to be updated later in the manifests storer data
                 // SBP-M1 review: why re-query when you already have the manifest in memory from outer loop
-                // SBP-M1 review: unnecessary clones, use & for keys
                 let mut updated_data = ManifestsStorerData::<T>::get((
                     manifest.0 .0,
-                    manifest.0 .1.clone(),
-                    manifest.0 .2.clone(),
+                    &manifest.0 .1,
+                    &manifest.0 .2,
                 ))
                 // SBP-M1 review: unwrap may panic, should be handled gracefully
                 .unwrap();
 
                 // Checks that the manifest has the file_size available to calculate the file participation in the network
-                // SBP-M1 review: unnecessary clones, use & for keys
-                if let Some(file_check) = Manifests::<T>::get(manifest.0 .0, manifest.0 .2.clone())
+                if let Some(file_check) = Manifests::<T>::get(manifest.0 .0, &manifest.0 .2)
                 {
                     if let Some(file_size) = file_check.size {
                         // SBP-M1 review: use safe math
@@ -1636,10 +1603,8 @@ impl<T: Config> Pallet<T> {
                     }
                 }
                 // Update the variables values for the next cycle
-                // SBP-M1 review: unnecessary clones, use & for keys
-                // SBP-M1 review: can use .mutate(..) rather than .try_mutate(..) as no error returned from closure
-                ManifestsStorerData::<T>::try_mutate(
-                    (manifest.0 .0, account.clone(), manifest.0 .2.clone()),
+                ManifestsStorerData::<T>::mutate(
+                    (manifest.0 .0, &account, manifest.0 .2),
                     |value| -> DispatchResult {
                         if let Some(manifest) = value {
                             manifest.active_cycles = updated_data.active_cycles;
@@ -1697,32 +1662,20 @@ impl<T: Config> Pallet<T> {
             Error::<T>::AccountNotInPool
         );
         ensure!(
-            // SBP-M1 review: use .contains_key()
-            Manifests::<T>::try_get(pool_id, cid.clone()).is_ok(),
+            Manifests::<T>::contains_key(pool_id, &cid),
             Error::<T>::ManifestNotFound
         );
 
         // Updated the file_size of a manifest
-        // SBP-M1 review: wasteful .clone(), & can be used with EncodeLike key
-        // SBP-M1 review: use .mutate() instead of try_mutate() as no error returned
-        Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
+        Manifests::<T>::mutate(pool_id, &cid, |value| -> DispatchResult {
             // SBP-M1 review: use let-else to reduce nesting
             if let Some(manifest) = value {
                 // Checks if there is a uploader that has the storer on chain
-                // SBP-M1 review: consider .is_some() > use cargo clippy
-                // SBP-M1 review: use let-else to reduce nesting
-                if let Some(_) =
-                    // SBP-M1 review: wasteful .to_vec() call, pass slice?
-                    // SBP-M1 review: & not required before &storer > use cargo clippy
-                    Self::get_uploader_index_given_storer(manifest.users_data.to_vec(), &storer)
-                {
+                if  Self::get_uploader_index_given_storer(manifest.users_data.to_vec(), storer).is_some() {
                     manifest.size = Some(size);
                     //Update the network size for the total amount of people that had that manifest before the file_size was given
                     NetworkSize::<T>::mutate(|total_value| {
-                        // SBP-M1 review: use safe math
-                        *total_value +=
-                            // SBP-M1 review: wasteful .to_vec() call
-                            size * Self::get_total_storers(manifest.users_data.to_vec());
+                        *total_value += size * Self::get_total_storers(manifest.users_data.clone());
                     });
                 }
             }
@@ -1777,23 +1730,19 @@ impl<T: Config> Pallet<T> {
     ) -> Option<usize> {
         return data
             .iter()
-            // SBP-M1 review: use safe math
-            // SBP-M1 review: casting may truncate
-            .position(|x| x.replication_factor - x.storers.len() as u16 > 0);
+            .position(|x| x.replication_factor.saturating_sub(x.storers.len() as u16) > 0);
     }
 
     // Get the final replication factor if there is multiple uploaders in a manifest
     // SBP-M1 review: should probably be pub(crate) at most
     // SBP-M1 review: data parameter can be borrowed
     pub fn get_added_replication_factor(data: Vec<UploaderData<T::AccountId>>) -> u16 {
-        let mut result = 0;
-        for user_data in data {
-            // SBP-M1 review: use safe math
-            // SBP-M1 review: casting may truncate
-            result += user_data.replication_factor - user_data.storers.len() as u16;
+        let mut result:u16 = 0;
+        for user_data in data {          
+            let diff = user_data.replication_factor as i32 - user_data.storers.len() as i32;
+            result = result.saturating_add(diff as u16);
         }
-        // SBP-M1 review: unneeded return and useless .into() > use cargo clippy
-        return result.into();
+        result
     }
 
     // Get the uploader index given the uploader account
@@ -1814,8 +1763,7 @@ impl<T: Config> Pallet<T> {
         data: Vec<UploaderData<T::AccountId>>,
         account: T::AccountId,
     ) -> bool {
-        // SBP-M1 review: use .any() instead > use cargo clippy
-        return data.iter().position(|x| x.uploader == account).is_some();
+        return data.iter().any(|x| x.uploader == account);
     }
 
     // Get the uploader index given an storer account
@@ -1837,9 +1785,7 @@ impl<T: Config> Pallet<T> {
     ) -> bool {
         return data
             .iter()
-            // SBP-M1 review: use .any() instead > use cargo clippy
-            .position(|x| x.storers.contains(account))
-            .is_some();
+            .any(|x| x.storers.contains(account));
     }
 
     // Get the storer index given the storer account and the uploader index
@@ -1851,33 +1797,27 @@ impl<T: Config> Pallet<T> {
         // SBP-M1 review: needless pass by value
         account: T::AccountId,
     ) -> Option<usize> {
-        // SBP-M1 review: indexing may panic, use .get() to handle potential invalid index gracefully
-        return data[uploader_index]
-            .storers
-            .iter()
-            .position(|x| *x == account.clone());
+        return data.get(uploader_index)
+            .and_then(|uploader_data| uploader_data.storers.iter()
+            .position(|x| *x == account.clone()));
     }
 
     // Get the total amount of storers given the uploaders vector
-    // SBP-M1 review: should probably be pub(crate) at most
-    pub fn get_total_storers(data: Vec<UploaderData<T::AccountId>>) -> u64 {
-        let mut total_storers = 0;
+    pub(crate) fn get_total_storers(data: Vec<UploaderData<T::AccountId>>) -> u64 {
+        let mut total_storers:u64 = 0;
 
         for uploader in data {
-            // SBP-M1 review: use safe math - e.g. saturating_accrue
-            total_storers += uploader.storers.len() as u64;
+            total_storers = total_storers.saturating_add(uploader.storers.len() as u64);
         }
 
-        // SBP-M1 review: unneeded return statement > use cargo clippy
-        return total_storers;
+        total_storers
     }
 
     // Some functions to transform some values into another inside a Vec
     fn transform_manifest_to_vec(in_vec: Vec<ManifestMetadataOf<T>>) -> Vec<Vec<u8>> {
         in_vec
             .into_iter()
-            // SBP-M1 review: use .into_inner()
-            .map(|manifest| manifest.to_vec())
+            .map(|manifest| manifest.into_inner())
             .collect()
     }
 
@@ -1886,9 +1826,7 @@ impl<T: Config> Pallet<T> {
         in_vec.into_iter().map(|cid| cid.to_vec()).collect()
     }
 
-    // SBP-M1 review: unnecessary transform
     fn transform_filesize_to_u64(in_vec: Vec<FileSize>) -> Vec<u64> {
-        // SBP-M1 review: unnecessary map > use cargo clippy
-        in_vec.into_iter().map(|size| size).collect()
+        in_vec.into_iter().collect()
     }
 }
