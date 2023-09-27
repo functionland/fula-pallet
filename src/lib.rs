@@ -367,7 +367,7 @@ pub mod pallet {
             Self::do_update_manifest(
                 who,
                 pool_id,
-                cid,
+                &cid,
                 active_days,
                 active_cycles,
                 missed_cycles,
@@ -386,7 +386,7 @@ pub mod pallet {
             replication_factor: ReplicationFactor,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            Self::do_upload_manifest(&who, pool_id, cid, manifest, replication_factor)
+            Self::do_upload_manifest(&who, pool_id, &cid, manifest, replication_factor)
         }
 
         // Upload multiple manifests to the chain
@@ -403,7 +403,7 @@ pub mod pallet {
             replication_factor: Vec<ReplicationFactor>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            Self::do_batch_upload_manifest(who, pool_id, cids, manifest, replication_factor)
+            Self::do_batch_upload_manifest(who, pool_id, &cids, manifest, &replication_factor)
         }
 
         // SBP-M1 review: improve description
@@ -418,7 +418,7 @@ pub mod pallet {
             pool_id: PoolIdOf<T>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            Self::do_storage_manifest(&who, pool_id, cid)
+            Self::do_storage_manifest(&who, pool_id, &cid)
         }
 
         // Storage multiple manifests from the chain
@@ -447,7 +447,7 @@ pub mod pallet {
             pool_id: PoolIdOf<T>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            Self::do_remove_storer(&who, pool_id, cid)
+            Self::do_remove_storer(&who, pool_id, &cid)
         }
 
         // A storer removed multiple manifests that were being stored on chain
@@ -475,13 +475,12 @@ pub mod pallet {
             pool_id: PoolIdOf<T>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            Self::do_remove_manifest(&who, pool_id, cid)
+            Self::do_remove_manifest(&who, pool_id, &cid)
         }
 
         // The Uploader remove multiple manifests from the chain
         #[pallet::call_index(8)]
         // SBP-M1 review: implement benchmark and use resulting weight function
-        // SBP-M1 review: unnecessary cast
         #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn batch_remove_manifest(
             origin: OriginFor<T>,
@@ -492,14 +491,13 @@ pub mod pallet {
             // SBP-M1 review: can just be DispatchResult as no additional information returned
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            Self::do_batch_remove_manifest(who, pool_ids, cids)
+            Self::do_batch_remove_manifest(who, &pool_ids, cids)
         }
 
         // SBP-M1 review: 'removes them'
         // A storer verifies if there are invalid manifests still stored on chain and removed them
         #[pallet::call_index(9)]
         // SBP-M1 review: implement benchmark and use resulting weight function
-        // SBP-M1 review: unnecessary cast
         #[pallet::weight(Weight::from_parts(10_000, 0))]
         // SBP-M1 review: why would a storer bother calling this to clean up? It would cost them in tx fees so disincentivized to clean up leading to state bloat. A suggestion is to take a deposit for storage, so they are incentivized to clean up to reclaim deposit
         // SBP-M1 review: add optional parameter to specify the maximum number of ManifestStorageData items to check per call
@@ -513,7 +511,6 @@ pub mod pallet {
         // A call to get all the manifest from the chain with possible filters
         #[pallet::call_index(10)]
         // SBP-M1 review: implement benchmark and use resulting weight function
-        // SBP-M1 review: unnecessary cast
         #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn get_manifests(
             _origin: OriginFor<T>,
@@ -531,7 +528,6 @@ pub mod pallet {
         // A call to get all available manifests from the chain with possible filters
         #[pallet::call_index(11)]
         // SBP-M1 review: implement benchmark and use resulting weight function
-        // SBP-M1 review: unnecessary cast
         #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn get_available_manifests(
             _origin: OriginFor<T>,
@@ -547,7 +543,6 @@ pub mod pallet {
         // A call to get all the storers data from the chain with possible filters
         #[pallet::call_index(12)]
         // SBP-M1 review: implement benchmark and use resulting weight function
-        // SBP-M1 review: unnecessary cast
         #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn get_manifests_storer_data(
             _origin: OriginFor<T>,
@@ -562,7 +557,6 @@ pub mod pallet {
         // Generates a challenge to verify if a storer is still holding a random CID that he has on chain
         #[pallet::call_index(13)]
         // SBP-M1 review: implement benchmark and use resulting weight function
-        // SBP-M1 review: unnecessary cast
         #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn generate_challenge(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
@@ -572,7 +566,6 @@ pub mod pallet {
         // Verifies if the challenged account has the CID that was challenged stored
         #[pallet::call_index(14)]
         // SBP-M1 review: implement benchmark and use resulting weight function
-        // SBP-M1 review: unnecessary cast
         #[pallet::weight(Weight::from_parts(10_000, 0))]
         // SBP-M1 review: can the challenged not simply call this function with any cid defined in public challenge request state (or emitted event) as parameter to result in a successful challenge?
         pub fn verify_challenge(
@@ -586,13 +579,12 @@ pub mod pallet {
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
             // SBP-M1 review: take ownership of challenged rather than reference as `who` is not used again
-            Self::do_verify_challenge(&who, cids, pool_id, class_id, asset_id)
+            Self::do_verify_challenge(&who, &cids, pool_id, class_id, asset_id)
         }
 
         // Mint the labor tokens that are going to be used to changed for claimed tokens and then for Fula Tokens - This correspond to the previously known rewards
         #[pallet::call_index(15)]
         // SBP-M1 review: implement benchmark and use resulting weight function
-        // SBP-M1 review: unnecessary cast
         #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn mint_labor_tokens(
             origin: OriginFor<T>,
@@ -608,7 +600,6 @@ pub mod pallet {
         // Updates the file_size of a manifest in the chain
         #[pallet::call_index(16)]
         // SBP-M1 review: implement benchmark and use resulting weight function
-        // SBP-M1 review: unnecessary cast
         #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn update_file_size(
             origin: OriginFor<T>,
@@ -618,13 +609,12 @@ pub mod pallet {
             size: FileSize,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
-            Self::do_update_size(&who, pool_id, cid, size)
+            Self::do_update_size(&who, pool_id, &cid, size)
         }
 
         // Updates multiple file_sizes of manifests in the chain
         #[pallet::call_index(17)]
         // SBP-M1 review: implement benchmark and use resulting weight function
-        // SBP-M1 review: unnecessary cast
         #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn update_file_sizes(
             origin: OriginFor<T>,
@@ -677,7 +667,7 @@ impl<T: Config> Pallet<T> {
     pub fn do_upload_manifest(
         uploader: &T::AccountId,
         pool_id: PoolIdOf<T>,
-        cid: CIDOf<T>,
+        cid: &CIDOf<T>,
         manifest: ManifestMetadataOf<T>,
         replication_factor: ReplicationFactor,
     ) -> DispatchResult {
@@ -738,11 +728,9 @@ impl<T: Config> Pallet<T> {
     pub fn do_batch_upload_manifest(
         uploader: T::AccountId,
         pool_ids: Vec<PoolIdOf<T>>,
-        // SBP-M1 review: needless pass by value
-        cids: Vec<CIDOf<T>>,
+        cids: &Vec<CIDOf<T>>,
         manifests: Vec<ManifestMetadataOf<T>>,
-        // SBP-M1 review: needless pass by value
-        replication_factors: Vec<ReplicationFactor>,
+        replication_factors: &Vec<ReplicationFactor>,
     ) -> DispatchResult {
         // Validations made to verify some parameters given
         ensure!(
@@ -777,8 +765,7 @@ impl<T: Config> Pallet<T> {
     pub fn do_update_manifest(
         storer: T::AccountId,
         pool_id: PoolIdOf<T>,
-        // SBP-M1 review: needless pass by value
-        cid: CIDOf<T>,
+        cid: &CIDOf<T>,
         active_days: ActiveDays,
         active_cycles: Cycles,
         missed_cycles: Cycles,
@@ -796,7 +783,6 @@ impl<T: Config> Pallet<T> {
         );
 
         // Update the values in the ManifestStorerData storage
-        // SBP-M1 review: pass keys by reference instead of wasteful cloning
         ManifestsStorerData::<T>::mutate(
             (pool_id, &storer, &cid),
             |value| -> DispatchResult {
@@ -809,10 +795,10 @@ impl<T: Config> Pallet<T> {
             },
         )?;
 
-        // SBP-M1 review: wasteful clones and to_vec() > use cargo clippy
+        // SBP-M1 review: wasteful to_vec() > use cargo clippy
         Self::deposit_event(Event::ManifestStorageUpdated {
-            storer: storer.clone(),
-            pool_id: pool_id.clone(),
+            storer,
+            pool_id,
             cid: cid.to_vec(),
             active_cycles,
             missed_cycles,
@@ -826,8 +812,7 @@ impl<T: Config> Pallet<T> {
     pub fn do_storage_manifest(
         storer: &T::AccountId,
         pool_id: PoolIdOf<T>,
-        // SBP-M1 review: needless pass by value
-        cid: CIDOf<T>,
+        cid: &CIDOf<T>,
     ) -> DispatchResult {
         // Validations made to verify some parameters given
         ensure!(
@@ -846,8 +831,7 @@ impl<T: Config> Pallet<T> {
             if let Some(manifest) = value {
                 // Get the next uploader that has available storers
                 if let Some(index) =
-                    // SBP-M1 review: pass by ref rather than copy vector
-                    Self::get_next_available_uploader_index(manifest.users_data.to_vec())
+                    Self::get_next_available_uploader_index(&manifest.users_data)
                 {
                     ensure!(
                         // SBP-M1 review: use .get() and handle properly rather than []
@@ -896,7 +880,7 @@ impl<T: Config> Pallet<T> {
     ) -> DispatchResult {
         // The cycle to execute multiple times the storage manifests
         for cid in cids.clone() {
-            Self::do_storage_manifest(&storer, pool_id, cid)?;
+            Self::do_storage_manifest(&storer, pool_id, &cid)?;
         }
 
         // SBP-M1 review: wasteful clones > use cargo clippy
@@ -913,8 +897,7 @@ impl<T: Config> Pallet<T> {
     pub fn do_remove_manifest(
         uploader: &T::AccountId,
         pool_id: PoolIdOf<T>,
-        // SBP-M1 review: needless pass by value
-        cid: CIDOf<T>,
+        cid: &CIDOf<T>,
     ) -> DispatchResult {
         // Validations made to verify some parameters given
         ensure!(
@@ -929,8 +912,7 @@ impl<T: Config> Pallet<T> {
         // Found the uploader in the vector of uploader data
         // SBP-M1 review: consider let-else to reduce nesting
         if let Some(index) =
-            // SBP-M1 review: unnecessary clones, borrow instead
-            Self::get_uploader_index(manifest.users_data.to_owned(), uploader.clone())
+            Self::get_uploader_index(&manifest.users_data, &uploader)
         {
             // If there are more uploaders, just remove the value from the vector of uploaders, if not remove the entire manifest
             // SBP-M1 review: wasteful clone > use cargo clippy
@@ -977,8 +959,7 @@ impl<T: Config> Pallet<T> {
     // SBP-M1 review: should probably be pub(crate) at most
     pub fn do_batch_remove_manifest(
         uploader: T::AccountId,
-        // SBP-M1 review: needless pass by value
-        pool_ids: Vec<PoolIdOf<T>>,
+        pool_ids: &Vec<PoolIdOf<T>>,
         cids: Vec<CIDOf<T>>,
     ) -> DispatchResult {
         // Validations made to verify some parameters given
@@ -990,14 +971,13 @@ impl<T: Config> Pallet<T> {
         for (i, cid) in cids.clone().into_iter().enumerate() {
             // SBP-M1 review: indexing may panic
             let pool_id = pool_ids[i];
-            Self::do_remove_manifest(&uploader, pool_id, cid)?;
+            Self::do_remove_manifest(&uploader, pool_id, &cid)?;
         }
-
-        // SBP-M1 review: wasteful clones > use cargo clippy
+        
         Self::deposit_event(Event::BatchManifestRemoved {
-            uploader: uploader.clone(),
+            uploader,
             cids: Self::transform_cid_to_vec(cids),
-            pool_ids: pool_ids.clone(),
+            pool_ids: pool_ids.to_vec(),
         });
         Ok(())
     }
@@ -1007,8 +987,7 @@ impl<T: Config> Pallet<T> {
     pub fn do_remove_storer(
         storer: &T::AccountId,
         pool_id: PoolIdOf<T>,
-        // SBP-M1 review: needless pass by value
-        cid: CIDOf<T>,
+        cid: &CIDOf<T>,
     ) -> DispatchResult {
         // Validations made to verify some parameters given
         ensure!(
@@ -1028,23 +1007,20 @@ impl<T: Config> Pallet<T> {
             if let Some(manifest) = value {
                 // Verify if the account is a storer
                 ensure!(
-                    // SBP-M1 review: pass by ref to avoid clone
-                    Self::verify_account_is_storer(manifest.users_data.to_owned(), storer),
+                    Self::verify_account_is_storer(&manifest.users_data, &storer),
                     Error::<T>::AccountNotStorer
                 );
                 // SBP-M1 review: use let-else to reduce nesting
                 // Get the uploader that correspond to the storer
                 if let Some(uploader_index) =
-                    // SBP-M1 review: pass by ref to avoid clone
-                    Self::get_uploader_index_given_storer(manifest.users_data.to_owned(), storer)
+                    Self::get_uploader_index_given_storer(&manifest.users_data, &storer)
                 {
                     // SBP-M1 review: use let-else to reduce nesting
                     // Get the index of the storer inside the storers vector
-                    // SBP-M1 review: borrow to avoid clones, .to_owned()
                     if let Some(storer_index) = Self::get_storer_index(
-                        manifest.users_data.to_owned(),
+                        &manifest.users_data,
                         uploader_index,
-                        storer.clone(),
+                        &storer,
                     ) {
                         // Remove the storer from the storers vector
                         // SBP-M1 review: indexing may panic, use .get() and handle gracefully
@@ -1058,15 +1034,14 @@ impl<T: Config> Pallet<T> {
                         // SBP-M1 review: wasteful clones, EncodeLike allows & usage > use cargo clippy
                         ManifestsStorerData::<T>::remove((
                             pool_id,
-                            value_removed.clone(),
+                            value_removed,
                             cid.clone(),
                         ));
                         // Update the network size, removing the size that belong to the removed storer
                         if let Some(file_size) = manifest.size {
                             NetworkSize::<T>::mutate(|total_value| {
                                 // SBP-M1 review: use safe math
-                                // SBP-M1 review: unnecessary cast > use cargo clippy
-                                *total_value -= file_size as u64;
+                                *total_value -= file_size;
                             });
                         }
                     }
@@ -1079,7 +1054,7 @@ impl<T: Config> Pallet<T> {
         Self::deposit_event(Event::RemoveStorerOutput {
             storer: removed_storer,
             cid: cid.to_vec(),
-            pool_id: pool_id.clone(),
+            pool_id: pool_id,
         });
         Ok(())
     }
@@ -1094,7 +1069,7 @@ impl<T: Config> Pallet<T> {
         // SBP-M1 review: loops should be bounded to complete within block limits (e.g. BoundedVec)
         // SBP-M1 review: use 'for (i, cid) in cids.into_iter().enumerate() {}' to simplify and avoid cids[i] and clone
         for cid in cids.clone().into_iter() {
-            Self::do_remove_storer(&storer, pool_id, cid)?;
+            Self::do_remove_storer(&storer, pool_id, &cid)?;
         }
 
         // SBP-M1 review: wasteful clones > use cargo clippy
@@ -1147,11 +1122,10 @@ impl<T: Config> Pallet<T> {
             }
         }
 
-        // SBP-M1 review: unnecessary clones and .to_vec()
         Self::deposit_event(Event::VerifiedStorerManifests {
-            storer: storer.clone(),
-            valid_cids: valid_cids.to_vec(),
-            invalid_cids: invalid_cids.to_vec(),
+            storer,
+            valid_cids,
+            invalid_cids,
         });
         Ok(())
     }
@@ -1186,9 +1160,8 @@ impl<T: Config> Pallet<T> {
             // SBP-M1 review: can short-circuit if manifest already does not meet requirements
             if let Some(ref uploader_value) = uploader {
                 if Self::verify_account_is_uploader(
-                    // SBP-M1 review: wasteful clones
-                    item.2.users_data.to_vec(),
-                    uploader_value.clone(),
+                    &item.2.users_data,
+                    uploader_value,
                 ) {
                     meet_requirements = false;
                 }
@@ -1197,8 +1170,7 @@ impl<T: Config> Pallet<T> {
             // Checks for the storer account
             // SBP-M1 review: can short-circuit if manifest already does not meet requirements
             if let Some(ref storer_value) = storer {
-                // SBP-M1 review: implicit clone
-                if Self::verify_account_is_storer(item.2.users_data.to_vec(), storer_value) {
+                if Self::verify_account_is_storer(&item.2.users_data, &storer_value) {
                     meet_requirements = false;
                 }
             }
@@ -1237,8 +1209,7 @@ impl<T: Config> Pallet<T> {
             //Checks that there is still available storers to be added
             // SBP-M1 review: consider .is_some() > use cargo clippy
             // SBP-M1 review: use let-else to reduce nesting, use 'continue'
-            // SBP-M1 review: implicit clone
-            if let Some(_) = Self::get_next_available_uploader_index(item.2.users_data.to_vec()) {
+            if let Some(_) = Self::get_next_available_uploader_index(&item.2.users_data) {
                 //Checks for the pool_id
                 // SBP-M1 review: use let-else to reduce nesting
                 if let Some(pool_id_value) = pool_id {
@@ -1254,8 +1225,7 @@ impl<T: Config> Pallet<T> {
                         pool_id: item.0,
                         manifest_metadata: item.2.manifest_metadata,
                         replication_factor: Self::get_added_replication_factor(
-                            // SBP-M1 review: wasteful clone, borrow instead
-                            item.2.users_data.to_vec(),
+                            &item.2.users_data,
                         ),
                     });
                 }
@@ -1368,7 +1338,7 @@ impl<T: Config> Pallet<T> {
 
         // SBP-M1 review: unnecessary clone and .to_vec()
         Self::deposit_event(Event::Challenge {
-            challenger: challenger.clone(),
+            challenger: challenger,
             // SBP-M1 review: unwrap may panic, should be handled gracefully
             challenged: pair.0.unwrap(),
             cid: pair.1.unwrap().to_vec(),
@@ -1381,8 +1351,7 @@ impl<T: Config> Pallet<T> {
     // SBP-M1 review: function too long, needs refactoring
     pub fn do_verify_challenge(
         challenged: &T::AccountId,
-        // SBP-M1 review: needless pass by value
-        cids: Vec<CIDOf<T>>,
+        cids: &Vec<CIDOf<T>>,
         pool_id: PoolIdOf<T>,
         class_id: ClassId,
         asset_id: AssetId,
@@ -1625,9 +1594,8 @@ impl<T: Config> Pallet<T> {
         // SBP-M1 review: loss of sign, truncation by casting
         Self::update_claim_data(&account, amount, calculated_amount as u128, 0);
 
-        // SBP-M1 review: unnecessary clone
         Self::deposit_event(Event::MintedLaborTokens {
-            account: account.clone(),
+            account,
             class_id,
             asset_id,
             amount,
@@ -1641,8 +1609,7 @@ impl<T: Config> Pallet<T> {
     pub fn do_update_size(
         storer: &T::AccountId,
         pool_id: PoolIdOf<T>,
-        // SBP-M1 review: needless pass by value
-        cid: CIDOf<T>,
+        cid: &CIDOf<T>,
         size: FileSize,
     ) -> DispatchResult {
         // Validations made to verify some parameters given
@@ -1661,7 +1628,7 @@ impl<T: Config> Pallet<T> {
             // SBP-M1 review: use let-else to reduce nesting
             if let Some(manifest) = value {
                 // Checks if there is a uploader that has the storer on chain
-                if  Self::get_uploader_index_given_storer(manifest.users_data.to_vec(), storer).is_some() {
+                if  Self::get_uploader_index_given_storer(&manifest.users_data, &storer).is_some() {
                     manifest.size = Some(size);
                     //Update the network size for the total amount of people that had that manifest before the file_size was given
                     NetworkSize::<T>::mutate(|total_value| {
@@ -1699,7 +1666,7 @@ impl<T: Config> Pallet<T> {
             let cid = cids[i].to_owned();
             // SBP-M1 review: indexing may panic
             let size = sizes[i].to_owned();
-            Self::do_update_size(&storer, pool_id, cid, size)?;
+            Self::do_update_size(&storer, pool_id, &cid, size)?;
         }
 
         // SBP-M1 review: wasteful clones > use cargo clippy
@@ -1715,8 +1682,7 @@ impl<T: Config> Pallet<T> {
     // function to get the next available uploader index for when a user is going to become a storer
     // SBP-M1 review: should probably be pub(crate) at most
     pub fn get_next_available_uploader_index(
-        // SBP-M1 review: needless pass by value
-        data: Vec<UploaderData<T::AccountId>>,
+        data: &Vec<UploaderData<T::AccountId>>,
     ) -> Option<usize> {
         return data
             .iter()
@@ -1725,8 +1691,7 @@ impl<T: Config> Pallet<T> {
 
     // Get the final replication factor if there is multiple uploaders in a manifest
     // SBP-M1 review: should probably be pub(crate) at most
-    // SBP-M1 review: data parameter can be borrowed
-    pub fn get_added_replication_factor(data: Vec<UploaderData<T::AccountId>>) -> u16 {
+    pub fn get_added_replication_factor(data: &Vec<UploaderData<T::AccountId>>) -> u16 {
         let mut result:u16 = 0;
         for user_data in data {          
             let diff = user_data.replication_factor as i32 - user_data.storers.len() as i32;
@@ -1738,29 +1703,25 @@ impl<T: Config> Pallet<T> {
     // Get the uploader index given the uploader account
     // SBP-M1 review: should probably be pub(crate) at most
     pub fn get_uploader_index(
-        // SBP-M1 review: needless pass by value
-        data: Vec<UploaderData<T::AccountId>>,
-        // SBP-M1 review: needless pass by value
-        account: T::AccountId,
+        data: &Vec<UploaderData<T::AccountId>>,
+        account: &T::AccountId,
     ) -> Option<usize> {
-        return data.iter().position(|x| x.uploader == account);
+        return data.iter().position(|x| x.uploader == *account);
     }
 
     // Verifies if the account given is an uploader
     // SBP-M1 review: should probably be pub(crate) at most
     pub fn verify_account_is_uploader(
-        // SBP-M1 review: needless pass by value
-        data: Vec<UploaderData<T::AccountId>>,
-        account: T::AccountId,
+        data: &Vec<UploaderData<T::AccountId>>,
+        account: &T::AccountId,
     ) -> bool {
-        return data.iter().any(|x| x.uploader == account);
+        return data.iter().any(|x| x.uploader == *account);
     }
 
     // Get the uploader index given an storer account
     // SBP-M1 review: should probably be pub(crate) at most
     pub fn get_uploader_index_given_storer(
-        // SBP-M1 review: needless pass by value
-        data: Vec<UploaderData<T::AccountId>>,
+        data: &Vec<UploaderData<T::AccountId>>,
         account: &T::AccountId,
     ) -> Option<usize> {
         return data.iter().position(|x| x.storers.contains(account));
@@ -1769,8 +1730,7 @@ impl<T: Config> Pallet<T> {
     // Verify that the account is a storer
     // SBP-M1 review: should probably be pub(crate) at most
     pub fn verify_account_is_storer(
-        // SBP-M1 review: needless pass by value
-        data: Vec<UploaderData<T::AccountId>>,
+        data: &Vec<UploaderData<T::AccountId>>,
         account: &T::AccountId,
     ) -> bool {
         return data
@@ -1781,11 +1741,9 @@ impl<T: Config> Pallet<T> {
     // Get the storer index given the storer account and the uploader index
     // SBP-M1 review: should probably be pub(crate) at most
     pub fn get_storer_index(
-        // SBP-M1 review: needless pass by value
-        data: Vec<UploaderData<T::AccountId>>,
+        data: &Vec<UploaderData<T::AccountId>>,
         uploader_index: usize,
-        // SBP-M1 review: needless pass by value
-        account: T::AccountId,
+        account: &T::AccountId,
     ) -> Option<usize> {
         return data.get(uploader_index)
             .and_then(|uploader_data| uploader_data.storers.iter()
