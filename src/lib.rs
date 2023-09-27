@@ -354,8 +354,7 @@ pub mod pallet {
         // Updates the values of the manifest storer data given the specific data
         #[pallet::call_index(0)]
         // SBP-M1 review: implement benchmark and use resulting weight function
-        // SBP-M1 review: unnecessary cast
-        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn update_manifest(
             origin: OriginFor<T>,
             cid: CIDOf<T>,
@@ -378,8 +377,7 @@ pub mod pallet {
         // Upload a manifest to the chain
         #[pallet::call_index(1)]
         // SBP-M1 review: implement benchmark and use resulting weight function
-        // SBP-M1 review: unnecessary cast
-        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn upload_manifest(
             origin: OriginFor<T>,
             manifest: ManifestMetadataOf<T>,
@@ -394,8 +392,7 @@ pub mod pallet {
         // Upload multiple manifests to the chain
         #[pallet::call_index(2)]
         // SBP-M1 review: implement benchmark (with complexity parameter) and use resulting weight function
-        // SBP-M1 review: unnecessary cast
-        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn batch_upload_manifest(
             origin: OriginFor<T>,
             // SBP-M1 review: use BoundedVec for all Vec parameters, sized appropriately based on weight consumption (benchmarks)
@@ -413,8 +410,7 @@ pub mod pallet {
         // Storage an available manifest from the chain
         #[pallet::call_index(3)]
         // SBP-M1 review: implement benchmark and use resulting weight function
-        // SBP-M1 review: unnecessary cast
-        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
         // SBP-M1 review: consider clearer name for dispatchable function - e.g. add_storer_to_manifest
         pub fn storage_manifest(
             origin: OriginFor<T>,
@@ -428,8 +424,7 @@ pub mod pallet {
         // Storage multiple manifests from the chain
         #[pallet::call_index(4)]
         // SBP-M1 review: implement benchmark and use resulting weight function
-        // SBP-M1 review: unnecessary cast
-        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
         // SBP-M1 review: consider clearer name aligned with storage_manifest(..) suggestion
         pub fn batch_storage_manifest(
             origin: OriginFor<T>,
@@ -444,8 +439,7 @@ pub mod pallet {
         // A storer remove a manifest that was being stored on chain
         #[pallet::call_index(5)]
         // SBP-M1 review: implement benchmark and use resulting weight function
-        // SBP-M1 review: unnecessary cast
-        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
         // SBP-M1 review: consider renaming - the manifest isn't removed, only the ManifestsStorerData. Perhaps remove_storer_from_manifest?
         pub fn remove_stored_manifest(
             origin: OriginFor<T>,
@@ -459,8 +453,7 @@ pub mod pallet {
         // A storer removed multiple manifests that were being stored on chain
         #[pallet::call_index(6)]
         // SBP-M1 review: implement benchmark and use resulting weight function
-        // SBP-M1 review: unnecessary cast
-        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
         // SBP-M1 review: consider renaming to align with above
         pub fn batch_remove_stored_manifest(
             origin: OriginFor<T>,
@@ -475,8 +468,7 @@ pub mod pallet {
         // The Uploader remove the manifest from the chain
         #[pallet::call_index(7)]
         // SBP-M1 review: implement benchmark and use resulting weight function
-        // SBP-M1 review: unnecessary cast
-        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn remove_manifest(
             origin: OriginFor<T>,
             cid: CIDOf<T>,
@@ -490,7 +482,7 @@ pub mod pallet {
         #[pallet::call_index(8)]
         // SBP-M1 review: implement benchmark and use resulting weight function
         // SBP-M1 review: unnecessary cast
-        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn batch_remove_manifest(
             origin: OriginFor<T>,
             // SBP-M1 review: use BoundedVec for all Vec parameters, sized appropriately based on weight consumption (benchmarks)
@@ -508,7 +500,7 @@ pub mod pallet {
         #[pallet::call_index(9)]
         // SBP-M1 review: implement benchmark and use resulting weight function
         // SBP-M1 review: unnecessary cast
-        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
         // SBP-M1 review: why would a storer bother calling this to clean up? It would cost them in tx fees so disincentivized to clean up leading to state bloat. A suggestion is to take a deposit for storage, so they are incentivized to clean up to reclaim deposit
         // SBP-M1 review: add optional parameter to specify the maximum number of ManifestStorageData items to check per call
         pub fn verify_manifests(origin: OriginFor<T>) -> DispatchResult {
@@ -522,7 +514,7 @@ pub mod pallet {
         #[pallet::call_index(10)]
         // SBP-M1 review: implement benchmark and use resulting weight function
         // SBP-M1 review: unnecessary cast
-        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn get_manifests(
             _origin: OriginFor<T>,
             pool_id: Option<PoolIdOf<T>>,
@@ -540,7 +532,7 @@ pub mod pallet {
         #[pallet::call_index(11)]
         // SBP-M1 review: implement benchmark and use resulting weight function
         // SBP-M1 review: unnecessary cast
-        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn get_available_manifests(
             _origin: OriginFor<T>,
             pool_id: Option<PoolIdOf<T>>,
@@ -556,7 +548,7 @@ pub mod pallet {
         #[pallet::call_index(12)]
         // SBP-M1 review: implement benchmark and use resulting weight function
         // SBP-M1 review: unnecessary cast
-        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn get_manifests_storer_data(
             _origin: OriginFor<T>,
             pool_id: Option<PoolIdOf<T>>,
@@ -571,7 +563,7 @@ pub mod pallet {
         #[pallet::call_index(13)]
         // SBP-M1 review: implement benchmark and use resulting weight function
         // SBP-M1 review: unnecessary cast
-        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn generate_challenge(origin: OriginFor<T>) -> DispatchResult {
             let who = ensure_signed(origin)?;
             Self::do_generate_challenge(who)
@@ -581,7 +573,7 @@ pub mod pallet {
         #[pallet::call_index(14)]
         // SBP-M1 review: implement benchmark and use resulting weight function
         // SBP-M1 review: unnecessary cast
-        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
         // SBP-M1 review: can the challenged not simply call this function with any cid defined in public challenge request state (or emitted event) as parameter to result in a successful challenge?
         pub fn verify_challenge(
             origin: OriginFor<T>,
@@ -601,7 +593,7 @@ pub mod pallet {
         #[pallet::call_index(15)]
         // SBP-M1 review: implement benchmark and use resulting weight function
         // SBP-M1 review: unnecessary cast
-        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn mint_labor_tokens(
             origin: OriginFor<T>,
             // SBP-M1 review: no verification of these parameters to ensure they pertain to 'labour tokens'. Seems caller could specify anything and have them minted, depending on assets defined within assets pallet. Perhaps some allowlist configured on the pallet?
@@ -617,7 +609,7 @@ pub mod pallet {
         #[pallet::call_index(16)]
         // SBP-M1 review: implement benchmark and use resulting weight function
         // SBP-M1 review: unnecessary cast
-        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn update_file_size(
             origin: OriginFor<T>,
             cid: CIDOf<T>,
@@ -633,7 +625,7 @@ pub mod pallet {
         #[pallet::call_index(17)]
         // SBP-M1 review: implement benchmark and use resulting weight function
         // SBP-M1 review: unnecessary cast
-        #[pallet::weight(Weight::from_parts(10_000 as u64, 0))]
+        #[pallet::weight(Weight::from_parts(10_000, 0))]
         pub fn update_file_sizes(
             origin: OriginFor<T>,
             // SBP-M1 review: use BoundedVec for all Vec parameters, sized appropriately based on weight consumption (benchmarks)
@@ -805,9 +797,8 @@ impl<T: Config> Pallet<T> {
 
         // Update the values in the ManifestStorerData storage
         // SBP-M1 review: pass keys by reference instead of wasteful cloning
-        // SBP-M1 review: try_mutate unnecessary as closure doesnt return any error - use mutate instead
-        ManifestsStorerData::<T>::try_mutate(
-            (pool_id, &storer, cid.clone()),
+        ManifestsStorerData::<T>::mutate(
+            (pool_id, &storer, &cid),
             |value| -> DispatchResult {
                 if let Some(manifest) = value {
                     manifest.active_cycles = active_cycles;
@@ -944,7 +935,6 @@ impl<T: Config> Pallet<T> {
             // If there are more uploaders, just remove the value from the vector of uploaders, if not remove the entire manifest
             // SBP-M1 review: wasteful clone > use cargo clippy
             if manifest.users_data.to_owned().len() > 1 {
-                // SBP-M1 review: use mutate over try_mutate as no error currently returned from closure
                 Manifests::<T>::mutate(pool_id, &cid, |value| -> DispatchResult {
                     // SBP-M1 review: use let-else to reduce nesting
                     if let Some(manifest) = value {
