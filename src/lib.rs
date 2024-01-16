@@ -1703,8 +1703,7 @@ impl<T: Config> Pallet<T> {
                     }
                 }
                 // If the state of the manifest is successful
-                // SBP-M1 review: match statement might be cleaner
-                if manifest.1.challenge_state == ChallengeState::Successful {
+                if manifest.1.challenge_state != ChallengeState::Failed {
                     // When the active cycles reached {NUMBER_CYCLES_TO_ADVANCE} which is equal to 1 day, the manifest active days are increased and the rewards are calculated
                     // SBP-M1 review: use match statement
                     if manifest.1.active_cycles >= NUMBER_CYCLES_TO_ADVANCE {
