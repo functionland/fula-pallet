@@ -1310,7 +1310,7 @@ impl<T: Config> Pallet<T> {
                     }
                 }
                 // If the state of the manifest is successful
-                if manifest.1.challenge_state == ChallengeState::Successful {
+                if manifest.1.challenge_state != ChallengeState::Failed {
                     // When the active cycles reached {NUMBER_CYCLES_TO_ADVANCE} which is equal to 1 day, the manifest active days are increased and the rewards are calculated
                     if manifest.1.active_cycles >= NUMBER_CYCLES_TO_ADVANCE {
                         let active_days = manifest.1.active_days + 1;
