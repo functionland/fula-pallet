@@ -1,7 +1,7 @@
 [package]
 #SBP-M1 review: use " for consistency
 name = 'functionland-fula'
-version = "0.1.0"
+version = "0.1.1"
 #SBP-M1 review: authors appears to be invalid
 authors = ["SugarFunge Developers"]
 edition = "2021"
