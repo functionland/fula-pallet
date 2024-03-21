@@ -373,6 +373,7 @@ pub mod pallet {
         ManifestStorerDataNotFound,
         NoFileSizeProvided,
         NoAccountsToChallenge,
+        FileAlreadyUploadedbyUser
     }
 
     // SBP-M1 review: remove comment inherited from template
@@ -816,6 +817,10 @@ impl<T: Config> Pallet<T> {
             // SBP-M1 review: try_mutate not required as no error returned, use mutate
             Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
                 if let Some(manifest) = value {
+                    ensure!(
+                        !Self::verify_account_is_uploader(manifest.users_data.to_vec(),uploader.clone()),
+                        Error::<T>::FileAlreadyUploadedbyUser
+                    );
                     manifest.users_data.push(uploader_data)
                 }
                 Ok(())
