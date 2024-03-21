@@ -812,15 +812,15 @@ impl<T: Config> Pallet<T> {
         // If the CID of the manifest already exists the  it creates another Uploader into the Vec of uploader data, if not then it creates the CID in the manifests storage
         // SBP-M1 review: wasteful .clone(), & can be used with EncodeLike key
         // SBP-M1 review: switch to <Manifests<T>>::mutate(..) with inner match on value to 'upsert'
-        if let Some(_manifest) = Self::manifests(pool_id, cid.clone()) {
+        if let Some(manifest) = Self::manifests(pool_id, cid.clone()) {
             // SBP-M1 review: wasteful .clone(), & can be used with EncodeLike key
             // SBP-M1 review: try_mutate not required as no error returned, use mutate
+            ensure!(
+                !Self::verify_account_is_uploader(manifest.users_data.to_vec(),uploader.clone()),
+                Error::<T>::FileAlreadyUploadedbyUser
+            );
             Manifests::<T>::try_mutate(pool_id, cid.clone(), |value| -> DispatchResult {
                 if let Some(manifest) = value {
-                    ensure!(
-                        !Self::verify_account_is_uploader(manifest.users_data.to_vec(),uploader.clone()),
-                        Error::<T>::FileAlreadyUploadedbyUser
-                    );
                     manifest.users_data.push(uploader_data)
                 }
                 Ok(())
