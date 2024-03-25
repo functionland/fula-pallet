@@ -30,6 +30,7 @@ const DAILY_TOKENS_STORAGE: f64 = YEARLY_TOKENS as f64 * 0.20 / (12 * 30) as f64
 
 const NUMBER_CYCLES_TO_ADVANCE: u16 = 24;
 const NUMBER_CYCLES_TO_RESET: u16 = 24;
+
 // SBP-M1 review: missing trait doc comments
 pub trait MaxRange {
     type Range;
