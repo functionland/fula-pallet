@@ -14,6 +14,7 @@ use scale_info::TypeInfo;
 // SBP-M1 review: nest use statements
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::traits::Hash;
+use sp_runtime::DispatchError;
 use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
 use sp_std::vec::Vec;
@@ -1024,33 +1025,31 @@ impl<T: Config> Pallet<T> {
         pool_id: PoolIdOf<T>,
         cids: Vec<CIDOf<T>>,
     ) -> DispatchResult {
-        let mut errors: Vec<String> = Vec::new();
-    
-        // Process each CID. Collect errors without stopping the process.
-        for cid in &cids {
-            match Self::do_storage_manifest(storer, pool_id.clone(), cid.clone()) {
-                Ok(_) => (), // On success, no action needed.
-                Err(e) => errors.push(format!("{:?}", e)), // On error, collect it.
+        let mut errors: Vec<DispatchError> = Vec::new();
+        // The cycle to execute multiple times the storage manifests
+        // SBP-M1 review: use 'for cid in cids {}'
+        let n = cids.len();
+        for i in 0..n {
+            let cid = cids[i].to_owned();
+            match Self::do_storage_manifest(storer, pool_id, cid) {
+                Ok(_) => (),
+                Err(e) => errors.push(e),
             }
         }
-    
-        // Regardless of the outcome, first log the attempt to process the batch.
+        if !errors.is_empty() {
+            // Since the original code expected a single response, 
+            // decide how you want to handle multiple errors.
+            // For now, let's just log the first error to keep it simple.
+            let first_error = errors[0].clone();
+            return Err(first_error);
+        }
+
+        // SBP-M1 review: wasteful clones > use cargo clippy
         Self::deposit_event(Event::BatchStorageManifestOutput {
             storer: storer.clone(),
-            cids: Self::transform_cid_to_vec(cids.clone()), // Assuming this is a function to transform Vec<CIDOf<T>> to Vec<Vec<u8>>
+            cids: Self::transform_cid_to_vec(cids),
             pool_id: pool_id.clone(),
         });
-    
-        // If there were any errors, log them and return a generic error.
-        if !errors.is_empty() {
-            // Log detailed errors as an event, if applicable in your pallet's design.
-            Self::deposit_event(Event::MultipleErrors(
-                errors.join("; ").as_bytes().to_vec(),
-            ));
-            // Return a generic error indicating that multiple errors occurred.
-            return Err(Error::<T>::MultipleErrorsOccurred.into());
-        }
-    
         Ok(())
     }    
 
