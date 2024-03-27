@@ -1026,16 +1026,28 @@ impl<T: Config> Pallet<T> {
         cids: Vec<CIDOf<T>>,
     ) -> DispatchResult {
         let mut errors: Vec<DispatchError> = Vec::new();
+        let mut successful_cids: Vec<CIDOf<T>> = Vec::new();
         // The cycle to execute multiple times the storage manifests
         // SBP-M1 review: use 'for cid in cids {}'
         let n = cids.len();
         for i in 0..n {
             let cid = cids[i].to_owned();
             match Self::do_storage_manifest(storer, pool_id, cid) {
-                Ok(_) => (),
+                Ok(_) => successful_cids.push(cids[i].clone()),
                 Err(e) => errors.push(e),
             }
         }
+
+        // SBP-M1 review: wasteful clones > use cargo clippy
+        if !successful_cids.is_empty() {
+            Self::deposit_event(Event::BatchStorageManifestOutput {
+                storer: storer.clone(),
+                cids: Self::transform_cid_to_vec(successful_cids), // Ensure this uses only the successful CIDs
+                pool_id: pool_id.clone(),
+            });
+        }
+
+
         if !errors.is_empty() {
             // Since the original code expected a single response, 
             // decide how you want to handle multiple errors.
@@ -1044,12 +1056,6 @@ impl<T: Config> Pallet<T> {
             return Err(first_error);
         }
 
-        // SBP-M1 review: wasteful clones > use cargo clippy
-        Self::deposit_event(Event::BatchStorageManifestOutput {
-            storer: storer.clone(),
-            cids: Self::transform_cid_to_vec(cids),
-            pool_id: pool_id.clone(),
-        });
         Ok(())
     }    
 
