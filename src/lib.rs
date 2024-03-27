@@ -350,6 +350,7 @@ pub mod pallet {
             amount: MintBalance,
             calculated_amount: MintBalance,
         },
+        MultipleErrors(Vec<u8>),
     }
 
     // SBP-M1 review: consider adding doc comments for enum variants
@@ -374,7 +375,8 @@ pub mod pallet {
         ManifestStorerDataNotFound,
         NoFileSizeProvided,
         NoAccountsToChallenge,
-        FileAlreadyUploadedbyUser
+        FileAlreadyUploadedbyUser,
+        MultipleErrorsOccurred
     }
 
     // SBP-M1 review: remove comment inherited from template
@@ -1018,22 +1020,35 @@ impl<T: Config> Pallet<T> {
         pool_id: PoolIdOf<T>,
         cids: Vec<CIDOf<T>>,
     ) -> DispatchResult {
-        // The cycle to execute multiple times the storage manifests
-        // SBP-M1 review: use 'for cid in cids {}'
-        let n = cids.len();
-        for i in 0..n {
-            let cid = cids[i].to_owned();
-            Self::do_storage_manifest(storer, pool_id, cid)?;
+        let mut errors: Vec<String> = Vec::new();
+    
+        // Process each CID. Collect errors without stopping the process.
+        for cid in &cids {
+            match Self::do_storage_manifest(storer, pool_id.clone(), cid.clone()) {
+                Ok(_) => (), // On success, no action needed.
+                Err(e) => errors.push(format!("{:?}", e)), // On error, collect it.
+            }
         }
-
-        // SBP-M1 review: wasteful clones > use cargo clippy
+    
+        // Regardless of the outcome, first log the attempt to process the batch.
         Self::deposit_event(Event::BatchStorageManifestOutput {
             storer: storer.clone(),
-            cids: Self::transform_cid_to_vec(cids),
+            cids: Self::transform_cid_to_vec(cids.clone()), // Assuming this is a function to transform Vec<CIDOf<T>> to Vec<Vec<u8>>
             pool_id: pool_id.clone(),
         });
+    
+        // If there were any errors, log them and return a generic error.
+        if !errors.is_empty() {
+            // Log detailed errors as an event, if applicable in your pallet's design.
+            Self::deposit_event(Event::MultipleErrors(
+                errors.join("; ").as_bytes().to_vec(),
+            ));
+            // Return a generic error indicating that multiple errors occurred.
+            return Err(Error::<T>::MultipleErrorsOccurred.into());
+        }
+    
         Ok(())
-    }
+    }    
 
     // SBP-M1 review: should probably be pub(crate) at most
     // SBP-M1 review: function too long, needs refactoring
